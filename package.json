@@ -1,0 +1,24 @@
+{
+  "name": "zmachine-llm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Z-machine IF を LLM 翻訳層経由で日本語プレイ可能にする CLI 試作 (段階1)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "play": "tsx src/cli/main.ts",
+    "verify": "tsx src/verify/run-transcript.ts",
+    "gen-ja": "tsx src/verify/gen-ja-commands.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
+  }
+}

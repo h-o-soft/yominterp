@@ -1,0 +1,26 @@
+# 設計プロセスの一時/作業ファイル (Codex レビュー flow)
+plan.md
+plan-review-result.md
+plans/
+
+# テスト素材 (商用作品。配布・コミットしない)
+refs/
+
+# Node
+node_modules/
+
+# 設定 (接続先・APIキー等。config.example.json を git 管理)
+config.json
+
+# ゲーム本文・攻略手順の派生物は必ずこの gitignore 対象ディレクトリに置くこと (誤コミット防止)
+# - fixtures/: transcript 由来の ja-commands / few-shot / ゴールデン
+# - logs/: 自己修正ループ等の JSONL ログ (ゲーム出力を含む)
+# - .cache/: 翻訳キャッシュ (ゲーム本文を含む)
+# - reports/: 検証レポート (ゲーム出力を含む)
+fixtures/
+logs/
+.cache/
+reports/
+
+# OS
+.DS_Store
