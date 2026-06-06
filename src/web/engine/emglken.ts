@@ -48,9 +48,12 @@ export function settledToOutput(settled: SettledUpdate, sentCommand: string | un
   }
   let body = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
-  // quote 画面など: buffer が空で grid が大きい場合は grid を本文として扱う
-  if (body === '' && settled.gridHeight > 3 && settled.gridLines.length > 0) {
-    body = settled.gridLines.map((l) => l.trim()).join('\n');
+  // 拡大 grid (quote 画面・PunyInform 会話メニュー等) は本文の一部として扱う。
+  // メニューは buffer の台詞と同時に grid 再描画されるため、buffer が
+  // 非空でも grid を先頭に連結する (dfrotz のレイアウトと同順)
+  if (settled.gridHeight > 3 && settled.gridLines.length > 0) {
+    const gridText = settled.gridLines.map((l) => l.trim()).join('\n');
+    body = body === '' ? gridText : `${gridText}\n\n${body}`;
   }
 
   // ステータス行: 小さい grid (≤3 行) の先頭行。大きい grid は本文扱いなので除外

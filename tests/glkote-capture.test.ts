@@ -136,6 +136,23 @@ describe('settledToOutput (EngineOutput 構築)', () => {
     expect(out.statusLine).toBeUndefined();
   });
 
+  it('大きい grid は buffer に台詞があっても本文の先頭に連結する (会話メニュー)', () => {
+    const out = settledToOutput(
+      {
+        ...base,
+        bufferLines: ['You: "Hey Rosie."', 'Rosie: "Hello."'],
+        gridLines: ['Talk to Rosie about:', '1: Cora', '[ENTER] End conversation'],
+        gridHeight: 8,
+        input: { id: 2, gen: 3, type: 'char' },
+      },
+      undefined,
+    );
+    expect(out.body).toMatch(/^Talk to Rosie about:/);
+    expect(out.body).toContain('[ENTER] End conversation');
+    expect(out.body).toContain('Rosie: "Hello."');
+    expect(out.kind).toBe('query');
+  });
+
   it('小さい grid はステータス行として保持する', () => {
     const out = settledToOutput(
       {
