@@ -256,6 +256,35 @@ describe('EntryTranslator', () => {
     expect(await tr.selectMenuOption('衛兵について聞く', 'A. Himself\nB. The guard')).toBe('B');
   });
 
+  it('retranslate: GIVEUP 応答なら空を返す (giveup をコマンドとして送らない)', async () => {
+    const { tr } = makeTranslator(['GIVEUP']);
+    await tr.init(VOCAB);
+    const out = await tr.retranslate({
+      jaInput: '衛兵と戦う',
+      failedCommand: 'fight guard',
+      parserError: "I don't understand that.",
+      triedCommands: ['fight guard'],
+      recent: [],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('retranslate: 指示に同一意図の制約と GIVEUP の選択肢を含む', async () => {
+    const { tr, calls } = makeTranslator(['x lamp']);
+    await tr.init(VOCAB);
+    await tr.retranslate({
+      jaInput: 'ランプを見る',
+      failedCommand: 'inspect lamp',
+      parserError: "That's an unknown verb.",
+      triedCommands: ['inspect lamp'],
+      recent: [],
+    });
+    const messages = calls[0] as { content: string }[];
+    const user = messages[messages.length - 1]!.content;
+    expect(user).toContain('動詞の意味を変えてはならない');
+    expect(user).toContain('GIVEUP');
+  });
+
   it('retranslate: 失敗コマンドとエラーを渡して言い直させる', async () => {
     const { tr, calls } = makeTranslator(['x lamp']);
     await tr.init(VOCAB);

@@ -233,7 +233,14 @@ export class EntryTranslator {
     return kept;
   }
 
-  /** パーサエラーを受けた言い直し (自己修正ループから呼ばれる) */
+  /**
+   * パーサエラーを受けた言い直し (自己修正ループから呼ばれる)。
+   *
+   * 言い直しは「同一意図の言い換え」に限定する。意図を変えた代替コマンド
+   * (例: 戦う → talk) を自己修正が選ぶと accepted-wrong を自作してしまうため、
+   * 辞書の語彙で同じ意図を表せない場合は GIVEUP させて空を返し、
+   * 呼び出し元 (session) がゲームの拒否メッセージをそのままユーザーに見せる。
+   */
   async retranslate(req: RetranslateRequest): Promise<string[]> {
     const messages: ChatMessage[] = [
       { role: 'system', content: this.systemPrompt },
@@ -247,11 +254,22 @@ export class EntryTranslator {
           (req.triedCommands.length > 0
             ? `失敗済みコマンド (再提案禁止): ${req.triedCommands.join(' / ')}\n`
             : '') +
-          '同じ意図を表す別のコマンドを出力し直せ。1 行 1 コマンド。説明は不要。',
+          '[指示]\n' +
+          'プレイヤーの意図はそのままに、語彙・言い回しだけを変えたコマンドを出力し直せ。\n' +
+          '- 動詞の意味を変えてはならない (例: 「戦う」を talk や look の行動に置き換えるのは禁止)。\n' +
+          '- 対象を勝手に別の物に変えてはならない。\n' +
+          '- ゲームの辞書で同じ意図を表せないなら、コマンドを出さず GIVEUP とだけ出力せよ。\n' +
+          '1 行 1 コマンド。説明は不要。',
       },
     ];
+    const raw = await this.chatEntry(messages);
+    // GIVEUP = 同一意図の言い換えが作れない → 空を返してゲームの拒否を表面化させる
+    if (/\bGIVE ?UP\b/i.test(raw)) {
+      this.logger.log({ event: 'entry.retranslateGiveup', failed: req.failedCommand });
+      return [];
+    }
     // 言い直しでも破壊的 meta への退避は許さない
-    const { kept } = this.extractCommands(await this.chatEntry(messages), req.jaInput);
+    const { kept } = this.extractCommands(raw, req.jaInput);
     this.logger.log({ event: 'entry.retranslate', failed: req.failedCommand, commands: kept });
     return kept;
   }
