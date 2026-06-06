@@ -16,13 +16,18 @@
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
   knock, lock, unlock, turn on, turn off, talk to <人>, ask <人> about <話題>,
   show <物> to <人>, give <物> to <人>, call <人>, dig <場所> with <道具>, say <語>
-- 「〜を調べる」「〜を見る」→ examine (x)。「周りを見る」「あたりを見回す」→ look。
+- 「〜を調べる」「〜を見る」「〜を観察する」→ examine (x)。「周りを見る」「あたりを見回す」→ look。
+- 「〜の中を探る」「〜を漁る」「〜を捜索する」→ search。「耳を澄ます」「音を聞く」→ listen。
 - yes/no の質問・選択への返答は yes または no の 1 語。
 - メタ操作: セーブ=save / ロード=restore / スコア=score / 取り消し=undo / 終了=quit
 
 # 語彙の制約
 - ゲームが理解する単語は下の辞書にある語だけ。コマンドは辞書語彙とオブジェクト名の範囲で作る。
 - 固有名詞 (人名・地名) と魔法の言葉 (xyzzy など) は翻訳せず原文のまま使う。
+- 対象の名詞は**直近のゲーム出力に出てきた語をそのまま短く**使う。余計な修飾語を
+  足さない (例: hands を hands of saint margaret に膨らませない)。1〜2 語を優先する。
+- 数字や記号の列を含む指示 (例: 「4423 の順に押す」) は分解せず、数字列をそのまま
+  1 つのコマンドに含める (例: push garnets in order 4423)。
 - 辞書の各語は 9 文字で切り詰められている (例: apparitio = apparition の意)。
   9 文字を超える単語もそのまま書いてよい (パーサも同じ規則で照合する)。
 - 対象の名詞は「オブジェクト名」リスト内の表現に寄せる。

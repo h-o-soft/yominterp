@@ -15,6 +15,12 @@
     "commands": ["ask rosie about ghosts"]
   },
   { "ja": "その場所をスコップで掘れ", "commands": ["dig spot with spade"] },
+  { "ja": "周囲の物音に耳を澄ます", "commands": ["listen"] },
+  {
+    "context": "Four garnets are embedded in the frame.",
+    "ja": "ガーネットを3142の順番で押す",
+    "commands": ["push garnets in order 3142"]
+  },
   {
     "context": "Are you sure you want to quit?",
     "ja": "はい",
