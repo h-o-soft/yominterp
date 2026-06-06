@@ -1,0 +1,24 @@
+[
+  { "ja": "北へ行く", "commands": ["north"] },
+  { "ja": "ランプを取って東に進んで", "commands": ["take lamp", "east"] },
+  {
+    "context": "You can see a small wooden box here.",
+    "ja": "それを開けて",
+    "commands": ["open box"]
+  },
+  { "ja": "カンバスを調べる", "commands": ["x canvas"] },
+  { "ja": "持ち物を確認", "commands": ["inventory"] },
+  { "ja": "xyzzy", "commands": ["xyzzy"] },
+  {
+    "context": "Old Rosie is here, sweeping the floor.",
+    "ja": "ロージーに幽霊について聞いてみる",
+    "commands": ["ask rosie about ghosts"]
+  },
+  { "ja": "その場所をスコップで掘れ", "commands": ["dig spot with spade"] },
+  {
+    "context": "Are you sure you want to quit?",
+    "ja": "はい",
+    "commands": ["y"]
+  },
+  { "ja": "ドアをノックしてから中に入る", "commands": ["knock on door", "in"] }
+]
