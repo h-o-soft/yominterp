@@ -66,18 +66,8 @@ export function usefulObjectNames(names: string[]): string[] {
   return names.filter((n) => !INTERNAL_OBJECT_NAMES.has(n));
 }
 
-/**
- * LLM 応答からコマンド行を抽出する。
- * - コードフェンス・箇条書き記号・番号・プロンプト記号を剥がす
- * - 非 ASCII (日本語の説明文など) を含む行は捨てる
- * - `take lamp. go north` のような 1 行複数コマンドはピリオドで分割
- * - 先頭語が辞書 (9 文字切り詰め) にも ALWAYS_OK にもない行は捨てる
- */
-export function parseCommands(
-  text: string,
-  dictSet: ReadonlySet<string>,
-  dictWordLen = 9,
-): string[] {
+/** 応答テキストをコマンド候補のセグメント列に整形する (辞書照合はしない) */
+function cleanSegments(text: string): string[] {
   const out: string[] = [];
   for (let line of text.split('\n')) {
     line = line.trim();
@@ -89,18 +79,85 @@ export function parseCommands(
     for (let seg of line.split(/\.\s+|\.$|;\s*/)) {
       seg = seg.trim().toLowerCase().replace(/\s+/g, ' ');
       if (seg === '') continue;
-      if (/^\d+$/.test(seg)) {
-        out.push(seg); // メニュー選択の番号
-        continue;
-      }
-      if (!/^[a-z]/.test(seg)) continue;
       if (seg.length > 80) continue;
-      const first = seg.split(' ', 1)[0]!;
-      if (!ALWAYS_OK.has(first) && !dictSet.has(truncateForDict(first, dictWordLen))) continue;
+      if (!/^[a-z0-9]/.test(seg)) continue;
       out.push(seg);
     }
   }
   return out;
+}
+
+/**
+ * LLM 応答からコマンド行を抽出する。
+ * - コードフェンス・箇条書き記号・番号・プロンプト記号を剥がす
+ * - 非 ASCII (日本語の説明文など) を含む行は捨てる
+ * - `take lamp. go north` のような 1 行複数コマンドはピリオドで分割
+ * - 先頭語が辞書 (切り詰め照合) にも ALWAYS_OK にもない行は捨てる
+ */
+export function parseCommands(
+  text: string,
+  dictSet: ReadonlySet<string>,
+  dictWordLen = 9,
+): string[] {
+  const out: string[] = [];
+  for (const seg of cleanSegments(text)) {
+    if (/^\d+$/.test(seg)) {
+      out.push(seg); // メニュー選択の番号
+      continue;
+    }
+    if (!/^[a-z]/.test(seg)) continue;
+    const first = seg.split(' ', 1)[0]!;
+    if (!ALWAYS_OK.has(first) && !dictSet.has(truncateForDict(first, dictWordLen))) continue;
+    out.push(seg);
+  }
+  return out;
+}
+
+/**
+ * 辞書照合なしのコマンド候補抽出 (フォールバック用)。
+ * 辞書に無い動詞 (例: darkpit に無い fight) でも、形の良い短い行は
+ * そのままゲームへ渡し、実パーサの拒否 ("I don't understand") を
+ * 自己修正ループに回す方が、盲目的な再生成より安全である
+ * (再生成は e4b が "quit" 等の meta へ逃げる事故を起こした — 2026-06-06)。
+ * 雑談英文の誤通過を抑えるため、語数と長さを通常より強く制限する。
+ */
+export function parseCandidates(text: string): string[] {
+  return cleanSegments(text).filter((seg) => {
+    if (/^\d+$/.test(seg)) return true;
+    if (!/^[a-z]/.test(seg)) return false;
+    const words = seg.split(' ');
+    return words.length <= 6 && seg.length <= 40;
+  });
+}
+
+/**
+ * 破壊的/状態を変える meta コマンドは、日本語入力にその意図が明示されている
+ * 時だけ通す (通常行動の誤変換が quit 等に化けて発火するのを防ぐ)。
+ */
+const META_INTENT: [RegExp, RegExp][] = [
+  [/^(quit|q)$/, /終了|やめ(る|たい)|終わ(る|り|らせ)|ゲームを(終|や)|クイット/],
+  [/^restart$/, /最初から|初めから|リスタート|やり直|再スタート/],
+  [/^restore$/, /ロード|リストア|復元|再開|セーブを(読|呼)/],
+  [/^save$/, /セーブ|保存/],
+  [/^undo$/, /取り消|アンドゥ|(手|ターン)を戻/],
+];
+
+export function filterUnintendedMetas(
+  commands: string[],
+  jaInput: string,
+): { kept: string[]; dropped: string[] } {
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  for (const cmd of commands) {
+    const first = cmd.split(' ', 1)[0]!;
+    const meta = META_INTENT.find(([re]) => re.test(first));
+    if (meta !== undefined && !meta[1].test(jaInput)) {
+      dropped.push(cmd);
+    } else {
+      kept.push(cmd);
+    }
+  }
+  return { kept, dropped };
 }
 
 export interface EntryTranslatorOptions {
@@ -140,24 +197,40 @@ export class EntryTranslator {
     }
   }
 
+  /** 応答からコマンドを抽出 (辞書フィルタ → 候補フォールバック → meta ガード) */
+  private extractCommands(raw: string, jaInput: string): { kept: string[]; dropped: string[] } {
+    let commands = parseCommands(raw, this.dictSet, this.dictWordLen);
+    if (commands.length === 0) {
+      // 辞書外の動詞でも形の良い行はそのまま通す (実パーサの拒否 → 自己修正へ)
+      commands = parseCandidates(raw);
+    }
+    // 破壊的 meta (quit 等) は日本語入力に意図がある時だけ
+    const result = filterUnintendedMetas(commands, jaInput);
+    if (result.dropped.length > 0) {
+      this.logger.log({ event: 'entry.metaDropped', jaInput, dropped: result.dropped });
+    }
+    return result;
+  }
+
   /** 日本語入力 → 英コマンド列。コマンドが 1 つも取れなければ 1 回だけ言い直させる */
   async translate(jaInput: string, recent: TurnContext[]): Promise<string[]> {
     const messages = this.buildMessages(jaInput, recent);
     const first = await this.chatEntry(messages);
-    let commands = parseCommands(first, this.dictSet, this.dictWordLen);
-    if (commands.length === 0) {
+    let { kept, dropped } = this.extractCommands(first, jaInput);
+    if (kept.length === 0) {
+      const instruction =
+        dropped.length > 0
+          ? 'quit や save などの meta コマンドではなく、プレイヤーの行動を表すコマンド行のみを出力し直せ。説明は不要。'
+          : 'コマンド行のみを出力し直せ。説明は不要。1 行 1 コマンド。';
       const retryMessages: ChatMessage[] = [
         ...messages,
         { role: 'assistant', content: first },
-        {
-          role: 'user',
-          content: 'コマンド行のみを出力し直せ。説明は不要。1 行 1 コマンド。',
-        },
+        { role: 'user', content: instruction },
       ];
-      commands = parseCommands(await this.chatEntry(retryMessages), this.dictSet, this.dictWordLen);
+      ({ kept } = this.extractCommands(await this.chatEntry(retryMessages), jaInput));
     }
-    this.logger.log({ event: 'entry.translate', jaInput, commands });
-    return commands;
+    this.logger.log({ event: 'entry.translate', jaInput, commands: kept });
+    return kept;
   }
 
   /** パーサエラーを受けた言い直し (自己修正ループから呼ばれる) */
@@ -177,9 +250,10 @@ export class EntryTranslator {
           '同じ意図を表す別のコマンドを出力し直せ。1 行 1 コマンド。説明は不要。',
       },
     ];
-    const commands = parseCommands(await this.chatEntry(messages), this.dictSet, this.dictWordLen);
-    this.logger.log({ event: 'entry.retranslate', failed: req.failedCommand, commands });
-    return commands;
+    // 言い直しでも破壊的 meta への退避は許さない
+    const { kept } = this.extractCommands(await this.chatEntry(messages), req.jaInput);
+    this.logger.log({ event: 'entry.retranslate', failed: req.failedCommand, commands: kept });
+    return kept;
   }
 
   /**

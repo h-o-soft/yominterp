@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   EntryTranslator,
+  filterUnintendedMetas,
+  parseCandidates,
   parseCommands,
   truncateForDict,
   usefulObjectNames,
@@ -56,6 +58,51 @@ describe('parseCommands (応答パース)', () => {
 
   it('コマンドが 1 つもなければ空配列', () => {
     expect(parseCommands('すみません、わかりません。', DICT)).toEqual([]);
+  });
+});
+
+describe('parseCandidates (辞書照合なしフォールバック)', () => {
+  it('辞書外の動詞でも形の良い行は候補として通す', () => {
+    expect(parseCandidates('fight guard')).toEqual(['fight guard']);
+  });
+
+  it('整形 (引用符・箇条書き・日本語行除去) は通常と同じ', () => {
+    expect(parseCandidates('- "fight guard"\n了解しました')).toEqual(['fight guard']);
+  });
+
+  it('長い英文 (雑談) は候補にしない', () => {
+    expect(
+      parseCandidates('here is what you should probably try to do in this situation now'),
+    ).toEqual([]);
+  });
+});
+
+describe('filterUnintendedMetas (破壊的 meta ガード)', () => {
+  it('日本語入力に意図がない quit/restart/restore/save/undo は落とす', () => {
+    for (const meta of ['quit', 'q', 'restart', 'restore', 'save', 'undo']) {
+      const { kept, dropped } = filterUnintendedMetas([meta], '衛兵と戦う');
+      expect(kept, meta).toEqual([]);
+      expect(dropped, meta).toEqual([meta]);
+    }
+  });
+
+  it('意図が明示されていれば通す', () => {
+    expect(filterUnintendedMetas(['quit'], 'ゲームを終了して').kept).toEqual(['quit']);
+    expect(filterUnintendedMetas(['save'], 'セーブして').kept).toEqual(['save']);
+    expect(filterUnintendedMetas(['restore'], 'さっきのセーブをロードして').kept).toEqual([
+      'restore',
+    ]);
+    expect(filterUnintendedMetas(['restart'], '最初からやり直す').kept).toEqual(['restart']);
+    expect(filterUnintendedMetas(['undo'], '直前の手を取り消して').kept).toEqual(['undo']);
+  });
+
+  it('通常コマンドは影響を受けない (quiet 等の前方一致も誤爆しない)', () => {
+    const { kept, dropped } = filterUnintendedMetas(
+      ['kill guard', 'take lamp', 'quietly open door'],
+      '衛兵を倒す',
+    );
+    expect(kept).toEqual(['kill guard', 'take lamp', 'quietly open door']);
+    expect(dropped).toEqual([]);
   });
 });
 
@@ -135,6 +182,41 @@ describe('EntryTranslator', () => {
     const last = messages[messages.length - 1]!.content;
     expect(last).toContain('> look');
     expect(last).toContain('You see a box.');
+  });
+
+  it('辞書外の動詞 (fight 等) は再生成せずそのまま通す (実パーサに委ねる)', async () => {
+    const { tr, calls } = makeTranslator(['fight guard']);
+    await tr.init(VOCAB); // VOCAB の辞書に fight は無い
+    const out = await tr.translate('衛兵と戦う', []);
+    expect(out).toEqual(['fight guard']);
+    expect(calls.length).toBe(1); // 盲目的な再生成をしない
+  });
+
+  it('通常行動がハルシネーションで quit になっても発火させない (再現: 衛兵と戦う→quit)', async () => {
+    const { tr, calls } = makeTranslator(['quit', 'quit']);
+    await tr.init(VOCAB);
+    const out = await tr.translate('衛兵と戦う', []);
+    expect(out).toEqual([]); // meta ガードで全部落ち → session が日本語エラーを返す
+    expect(calls.length).toBe(2); // 1 回目 meta 落ち → 再生成 → また quit → 落ち
+  });
+
+  it('明確な終了の意図があれば quit を通す', async () => {
+    const { tr } = makeTranslator(['quit']);
+    await tr.init(VOCAB);
+    expect(await tr.translate('ゲームを終了して', [])).toEqual(['quit']);
+  });
+
+  it('retranslate でも meta への退避は許さない', async () => {
+    const { tr } = makeTranslator(['quit']);
+    await tr.init(VOCAB);
+    const out = await tr.retranslate({
+      jaInput: '衛兵と戦う',
+      failedCommand: 'fight guard',
+      parserError: "I don't understand that.",
+      triedCommands: ['fight guard'],
+      recent: [],
+    });
+    expect(out).toEqual([]);
   });
 
   it('全行フィルタ落ちなら 1 回だけ言い直しを要求する', async () => {
