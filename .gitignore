@@ -31,3 +31,6 @@ reports/
 
 # OS
 .DS_Store
+
+# secretary-system のローカル状態 (マシン固有)
+.claude/.secretary-estate
