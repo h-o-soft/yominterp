@@ -174,6 +174,31 @@ export class EntryTranslator {
     return commands;
   }
 
+  /**
+   * 会話メニュー (番号選択) に対する日本語指示を選択肢の番号へ変換する。
+   * 会話を終える意図なら '' (= ENTER) を返す。
+   */
+  async selectMenuOption(jaInput: string, menuBody: string): Promise<string> {
+    const messages: ChatMessage[] = [
+      {
+        role: 'system',
+        content:
+          'あなたはゲームの会話メニューの選択器である。メニュー (番号付きの選択肢) と' +
+          'プレイヤーの日本語指示が与えられる。指示に最も合う選択肢の**番号だけ**を出力する。' +
+          '会話を終える・立ち去る意図なら END とだけ出力する。説明・記号・引用符は書かない。',
+      },
+      {
+        role: 'user',
+        content: `[メニュー]\n${menuBody}\n\n[プレイヤー指示]\n${jaInput}`,
+      },
+    ];
+    const res = (await this.chatEntry(messages)).trim();
+    const num = /\b(\d{1,2})\b/.exec(res);
+    const selection = num !== null ? num[1]! : '';
+    this.logger.log({ event: 'entry.selectMenu', jaInput, response: res, selection });
+    return selection;
+  }
+
   buildMessages(jaInput: string, recent: TurnContext[]): ChatMessage[] {
     const messages: ChatMessage[] = [{ role: 'system', content: this.systemPrompt }];
     for (const ex of this.fewshot) {

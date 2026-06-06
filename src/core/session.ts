@@ -26,6 +26,13 @@ export interface SessionOptions {
   contextTurns: number;
   /** パーサエラー判定の追加パターン (設定で拡張) */
   extraParserErrorRes?: RegExp[] | undefined;
+  /**
+   * 会話メニューを「1」連打で全トピック自動消化する (検証/replay 専用)。
+   * 既定 false = メニューは query としてユーザーに返し選択させる (対話プレイ)。
+   * transcript は会話全文を 1 step として記録しているため、ゴールデン照合では
+   * true にして両側の集約単位を揃える。
+   */
+  autoExhaustMenus?: boolean | undefined;
 }
 
 export interface CommandResult {
@@ -57,30 +64,21 @@ export const TALK_MENU_RE = /\[ENTER\] End conversation/;
 export const REAL_QUESTION_RE = /(\?|yes or no[.:\]]*)\s*$/i;
 
 /**
- * コマンドを送り、自動応答できる中間入力待ちを解決しながら出力を読み切る:
- *   - 会話メニュー ("[ENTER] End conversation") → 「1」を選び続けて全トピック消化
- *     (ghosts.z5 の transcript は全トピック消化の会話全文を 1 step として記録)
- *   - keypress 待ちの pause/カットシーン画面 (末尾が `?` でない query) → 空行で続行
- *   - `?` で終わる query (yes-no 等の真の質問) は自動応答せず呼び出し元へ返す
- * 出力は連結した 1 つの EngineOutput として返す。
+ * コマンドを送り、自動応答できる中間入力待ちを解決しながら出力を読み切る。
+ * 自動応答の範囲は用途で異なる (下の 2 つの公開関数を参照)。
  */
-export async function sendExhaustingMenus(
+async function sendWithAutoReplies(
   engine: ZEngine,
   command: string,
-  maxAutoReplies = 30,
+  pickReply: (body: string) => string | undefined,
+  maxAutoReplies: number,
 ): Promise<EngineOutput> {
   let out = await engine.send(command);
   let merged = out;
   let n = 0;
   while (out.kind === 'query' && n < maxAutoReplies) {
-    let reply: string;
-    if (TALK_MENU_RE.test(out.body)) {
-      reply = '1';
-    } else if (!REAL_QUESTION_RE.test(out.body.trimEnd())) {
-      reply = ''; // keypress 待ち pause
-    } else {
-      break; // 真の質問 (yes-no・ストーリー選択) はユーザー/上位層に委ねる
-    }
+    const reply = pickReply(out.body);
+    if (reply === undefined) break; // 自動応答しない query は呼び出し元へ返す
     n++;
     out = await engine.send(reply);
     const next: EngineOutput = {
@@ -93,6 +91,54 @@ export async function sendExhaustingMenus(
     merged = next;
   }
   return merged;
+}
+
+/**
+ * 検証/replay 専用: 会話メニューも自動で読み切る。
+ *   - 会話メニュー ("[ENTER] End conversation") → 「1」を選び続けて全トピック消化
+ *     (ghosts.z5 の transcript は全トピック消化の会話全文を 1 step として記録
+ *      しているため、ゴールデン照合にはこの集約が必要)
+ *   - keypress 待ちの pause/カットシーン画面 (末尾が `?` でない query) → 空行で続行
+ *   - `?` で終わる query (yes-no 等の真の質問) は自動応答せず呼び出し元へ返す
+ * 出力は連結した 1 つの EngineOutput として返す。
+ */
+export async function sendExhaustingMenus(
+  engine: ZEngine,
+  command: string,
+  maxAutoReplies = 30,
+): Promise<EngineOutput> {
+  return sendWithAutoReplies(
+    engine,
+    command,
+    (body) => {
+      if (TALK_MENU_RE.test(body)) return '1';
+      if (!REAL_QUESTION_RE.test(body.trimEnd())) return ''; // keypress 待ち pause
+      return undefined;
+    },
+    maxAutoReplies,
+  );
+}
+
+/**
+ * 対話プレイ用: pause/カットシーン画面のみ空行で自動続行する。
+ * 会話メニューと真の質問 (yes-no 等) は自動応答せず query のまま返し、
+ * ユーザーに選択させる (メニュー提示ループは CLI 側)。
+ */
+export async function sendResolvingPauses(
+  engine: ZEngine,
+  command: string,
+  maxAutoReplies = 30,
+): Promise<EngineOutput> {
+  return sendWithAutoReplies(
+    engine,
+    command,
+    (body) => {
+      if (TALK_MENU_RE.test(body)) return undefined;
+      if (!REAL_QUESTION_RE.test(body.trimEnd())) return ''; // keypress 待ち pause
+      return undefined;
+    },
+    maxAutoReplies,
+  );
 }
 
 export class Session {
@@ -144,7 +190,11 @@ export class Session {
       let confirmed = false;
 
       for (;;) {
-        const out = await sendExhaustingMenus(this.engine, cmd);
+        // 対話プレイでは会話メニューを自動消化せずユーザーに返す
+        // (検証/replay は autoExhaustMenus=true で全消化し transcript の集約単位に揃える)
+        const out = this.opts.autoExhaustMenus
+          ? await sendExhaustingMenus(this.engine, cmd)
+          : await sendResolvingPauses(this.engine, cmd);
         if (out.kind === 'gameover') {
           results.push({ command: cmd, output: out, corrected: retries > 0, retries });
           this.appendPartial(partial, cmd, out.body);

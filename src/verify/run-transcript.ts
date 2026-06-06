@@ -141,6 +141,7 @@ async function verifyRun(
     maxRetriesPerCommand: cfg.selfCorrect.maxRetriesPerCommand,
     maxLlmCallsPerInput: cfg.selfCorrect.maxLlmCallsPerInput,
     contextTurns: cfg.context.turns,
+    autoExhaustMenus: true, // ゴールデン側 (sendExhaustingMenus) と集約単位を揃える
   };
 
   let { engine } = await startEngine(cfg);

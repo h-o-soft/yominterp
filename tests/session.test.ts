@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineOutput, OutputKind, ZEngine } from '../src/core/engine.js';
 import { classifyParserResponse } from '../src/core/selfcorrect.js';
-import { Session } from '../src/core/session.js';
+import { Session, sendExhaustingMenus, sendResolvingPauses } from '../src/core/session.js';
 import type { EntryTranslator } from '../src/core/translate/entry.js';
+
+const MENU =
+  'Talk to Rosie about:\n  1: Preparations\n  2: Cora\n\n[ENTER] End conversation\n\n----';
+const PAUSE = 'A spooky cutscene quote.\n\n-- Isaiah 14:12\n';
 
 describe('classifyParserResponse', () => {
   it('ghosts.z5 実機採取のエラー文言を検知する', () => {
@@ -149,6 +153,51 @@ describe('Session 自己修正ループ', () => {
     expect(retranslateCalls.length).toBe(2);
   });
 
+  it('会話メニューは自動消化せず query としてユーザーに返す (対話プレイ)', async () => {
+    const engine = new FakeEngine((cmd) =>
+      cmd === 'talk to rosie' ? out(MENU, 'query') : out('fine'),
+    );
+    const { entry } = fakeEntry(['talk to rosie', 'look']);
+    const session = new Session(engine, entry, OPTS);
+    const turn = await session.handleUserInput('ロージーと話す');
+    expect(turn.results).toHaveLength(1);
+    expect(turn.results[0]!.output.kind).toBe('query');
+    expect(turn.results[0]!.output.body).toContain('[ENTER] End conversation');
+    // メニュー選択 ('1') は送られていない
+    expect(engine.sent).toEqual(['talk to rosie']);
+    expect(turn.aborted).toBe(true); // 残り 'look' は破棄
+  });
+
+  it('autoExhaustMenus=true (検証用) ならメニューを全消化して 1 結果に集約する', async () => {
+    const engine = new FakeEngine((cmd, nth) => {
+      if (cmd === 'talk to rosie') return out(MENU, 'query');
+      if (cmd === '1' && nth === 2) return out('Topic A.\n\n' + MENU, 'query');
+      if (cmd === '1' && nth === 3) return out('Rosie waves goodbye.');
+      return out('fine');
+    });
+    const { entry } = fakeEntry(['talk to rosie']);
+    const session = new Session(engine, entry, { ...OPTS, autoExhaustMenus: true });
+    const turn = await session.handleUserInput('ロージーと話す');
+    expect(engine.sent).toEqual(['talk to rosie', '1', '1']);
+    expect(turn.results).toHaveLength(1);
+    expect(turn.results[0]!.output.kind).toBe('turn');
+    expect(turn.results[0]!.output.body).toContain('Rosie waves goodbye.');
+  });
+
+  it('pause 画面は対話プレイでも空行で自動続行する', async () => {
+    const engine = new FakeEngine((cmd, nth) => {
+      if (cmd === 'read sign') return out(PAUSE, 'query');
+      if (cmd === '' && nth === 2) return out('After the pause.');
+      return out('fine');
+    });
+    const { entry } = fakeEntry(['read sign']);
+    const session = new Session(engine, entry, OPTS);
+    const turn = await session.handleUserInput('看板を読む');
+    expect(engine.sent).toEqual(['read sign', '']);
+    expect(turn.results[0]!.output.kind).toBe('turn');
+    expect(turn.results[0]!.output.body).toContain('After the pause.');
+  });
+
   it('query (quit 確認等) はそのまま返し、残りは破棄', async () => {
     const engine = new FakeEngine((cmd) =>
       cmd === 'quit' ? out('Are you sure you want to quit?', 'query') : out('fine'),
@@ -177,5 +226,46 @@ describe('Session 自己修正ループ', () => {
     const turn = await session.handleUserInput('意味不明な入力');
     expect(turn.error).toContain('コマンドを生成できません');
     expect(engine.sent).toEqual([]);
+  });
+});
+
+describe('sendExhaustingMenus / sendResolvingPauses (自動応答ヘルパ)', () => {
+  it('sendExhaustingMenus: メニューを「1」連打で全トピック消化し出力を連結する (検証用)', async () => {
+    const engine = new FakeEngine((cmd, nth) => {
+      if (cmd === 'talk to rosie') return out(MENU, 'query');
+      if (cmd === '1' && nth === 2) return out('Topic A.\n\n' + MENU, 'query');
+      if (cmd === '1' && nth === 3) return out('Topic B. Rosie waves goodbye.');
+      return out('fine');
+    });
+    const result = await sendExhaustingMenus(engine, 'talk to rosie');
+    expect(engine.sent).toEqual(['talk to rosie', '1', '1']);
+    expect(result.kind).toBe('turn');
+    expect(result.body).toContain('Topic A.');
+    expect(result.body).toContain('Rosie waves goodbye.');
+  });
+
+  it('sendResolvingPauses: メニューは自動応答せず query のまま返す (対話用)', async () => {
+    const engine = new FakeEngine(() => out(MENU, 'query'));
+    const result = await sendResolvingPauses(engine, 'talk to rosie');
+    expect(engine.sent).toEqual(['talk to rosie']);
+    expect(result.kind).toBe('query');
+  });
+
+  it('sendResolvingPauses: pause は空行で続行、真の質問では停止する', async () => {
+    const engine = new FakeEngine((cmd, nth) => {
+      if (nth === 1) return out(PAUSE, 'query');
+      if (nth === 2) return out('Do you want to proceed? Please answer YES or NO.', 'query');
+      return out('fine');
+    });
+    const result = await sendResolvingPauses(engine, 'enter door');
+    expect(engine.sent).toEqual(['enter door', '']);
+    expect(result.kind).toBe('query');
+    expect(result.body).toContain('YES or NO');
+  });
+
+  it('暴走防止: maxAutoReplies で打ち切る', async () => {
+    const engine = new FakeEngine(() => out(MENU, 'query'));
+    await sendExhaustingMenus(engine, 'talk', 5);
+    expect(engine.sent).toHaveLength(6); // talk + 自動応答 5
   });
 });

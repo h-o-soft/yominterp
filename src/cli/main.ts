@@ -10,7 +10,12 @@ import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { parseStatusLine } from '../core/engine.js';
 import { LLMClient } from '../core/llm/client.js';
-import { Session, type TurnResult } from '../core/session.js';
+import {
+  Session,
+  TALK_MENU_RE,
+  type TurnResult,
+  sendResolvingPauses,
+} from '../core/session.js';
 import { EntryTranslator } from '../core/translate/entry.js';
 import { ExitTranslator } from '../core/translate/exit.js';
 import { extractDictionary } from '../core/zfile/dictionary.js';
@@ -100,16 +105,39 @@ async function main(): Promise<void> {
   session.pushGameOutput(first.body);
   if (showRaw) console.log(`${DIM}${first.body}${RESET}`);
 
+  // readline は question 待機外に届いた行を捨てるため、行キューで保持する
+  // (パイプ入力でのスクリプトプレイ・処理中の先行入力を取りこぼさない)
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const lineQueue: string[] = [];
+  const lineWaiters: ((line: string | undefined) => void)[] = [];
+  let stdinClosed = false;
+  rl.on('line', (l) => {
+    const w = lineWaiters.shift();
+    if (w) w(l);
+    else lineQueue.push(l);
+  });
+  rl.on('close', () => {
+    stdinClosed = true;
+    while (lineWaiters.length > 0) lineWaiters.shift()!(undefined);
+  });
+  /** プロンプトを表示して次の 1 行を読む。stdin 終端なら undefined */
+  function ask(promptText: string): Promise<string | undefined> {
+    const queued = lineQueue.shift();
+    if (queued !== undefined) {
+      process.stdout.write(promptText + queued + '\n'); // キュー消費もエコーして可視化
+      return Promise.resolve(queued);
+    }
+    if (stdinClosed) return Promise.resolve(undefined);
+    process.stdout.write(promptText);
+    return new Promise((resolve) => lineWaiters.push(resolve));
+  }
+
   console.log(`${DIM}日本語で指示してください。/help でメタコマンド一覧。${RESET}`);
 
   for (;;) {
-    let line: string;
-    try {
-      line = (await rl.question('\n> ')).trim();
-    } catch {
-      break; // stdin が閉じられた (Ctrl-D / パイプ終端)
-    }
+    const answer = await ask('\n> ');
+    if (answer === undefined) break; // stdin が閉じられた (Ctrl-D / パイプ終端)
+    const line = answer.trim();
     if (line === '') continue;
 
     if (line === '/help') {
@@ -162,6 +190,49 @@ async function main(): Promise<void> {
       const ja = await exit.translate(r.output.body);
       if (ja !== '') console.log(ja);
       if (showRaw && r.output.body !== '') console.log(`${DIM}${r.output.body}${RESET}`);
+    }
+
+    // 会話メニュー: プレイヤーが選択肢を選ぶ対話ループ
+    let menuOut = turn.results[turn.results.length - 1]?.output;
+    while (menuOut !== undefined && menuOut.kind === 'query' && TALK_MENU_RE.test(menuOut.body)) {
+      // メニューに実在する番号 (`  1: Topic` 行) を抽出してバリデーションに使う
+      const validNumbers = new Set(
+        [...menuOut.body.matchAll(/^\s*(\d+):/gm)].map((m) => m[1]!),
+      );
+      const raw = (
+        (await ask(`${DIM}(番号で選択 / 日本語で指示 / 空 Enter で会話を終える)${RESET}\n? `)) ?? ''
+      ).trim(); // stdin 終端なら会話を終える
+      let selection: string;
+      if (raw === '' || ['終わる', '終える', '終了', 'やめる', '/end'].includes(raw)) {
+        selection = '';
+      } else if (/^\d{1,2}$/.test(raw)) {
+        selection = raw;
+      } else {
+        selection = await entry.selectMenuOption(raw, menuOut.body);
+      }
+      if (selection !== '' && !validNumbers.has(selection)) {
+        console.log(`${YELLOW}その選択肢はありません (${[...validNumbers].join('/')} か空 Enter)${RESET}`);
+        continue; // メニューは開いたまま → 選び直し
+      }
+      console.log(`${DIM}> ${selection === '' ? '(会話を終える)' : selection}${RESET}`);
+      let out;
+      try {
+        out = await sendResolvingPauses(engine, selection);
+      } catch (err) {
+        // 無効入力にゲームが無反応のままのことがある (メニューは開いたまま)
+        console.log(`${YELLOW}反応がありません。選び直してください。(${String(err)})${RESET}`);
+        continue;
+      }
+      printStatus(out.statusLine);
+      const ja = await exit.translate(out.body);
+      if (ja !== '') console.log(ja);
+      if (showRaw && out.body !== '') console.log(`${DIM}${out.body}${RESET}`);
+      session.pushGameOutput(out.body);
+      if (out.kind === 'gameover') {
+        turn.gameOver = true;
+        break;
+      }
+      menuOut = out;
     }
     if (turn.error !== undefined) {
       const isJa = /[^\x00-\x7f]/.test(turn.error);

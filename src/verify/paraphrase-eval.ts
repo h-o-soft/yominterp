@@ -124,6 +124,7 @@ async function main(): Promise<void> {
         maxRetriesPerCommand: cfg.selfCorrect.maxRetriesPerCommand,
         maxLlmCallsPerInput: cfg.selfCorrect.maxLlmCallsPerInput,
         contextTurns: cfg.context.turns,
+        autoExhaustMenus: true, // ゴールデン側と集約単位を揃える
       }, logger);
       if (set.index === 0) session.pushGameOutput(introBody);
       for (const g of golden.slice(Math.max(0, set.index - cfg.context.turns), set.index)) {

@@ -145,6 +145,29 @@ describe('EntryTranslator', () => {
     expect(calls.length).toBe(2);
   });
 
+  it('selectMenuOption: 日本語指示をメニュー番号に変換する', async () => {
+    const { tr, calls } = makeTranslator(['2']);
+    await tr.init(VOCAB);
+    const menu = 'Talk to Rosie about:\n  1: Preparations\n  2: Cora\n\n[ENTER] End conversation';
+    const sel = await tr.selectMenuOption('コーラについて聞いて', menu);
+    expect(sel).toBe('2');
+    const messages = calls[0] as { content: string }[];
+    expect(messages[1]!.content).toContain('2: Cora');
+    expect(messages[1]!.content).toContain('コーラについて聞いて');
+  });
+
+  it('selectMenuOption: 番号入りの饒舌な応答からも番号を拾う', async () => {
+    const { tr } = makeTranslator(['選択肢は 3 です。']);
+    await tr.init(VOCAB);
+    expect(await tr.selectMenuOption('雪嵐の話', 'menu')).toBe('3');
+  });
+
+  it('selectMenuOption: END (会話終了) は空文字 = ENTER を返す', async () => {
+    const { tr } = makeTranslator(['END']);
+    await tr.init(VOCAB);
+    expect(await tr.selectMenuOption('もう行くよ', 'menu')).toBe('');
+  });
+
   it('retranslate: 失敗コマンドとエラーを渡して言い直させる', async () => {
     const { tr, calls } = makeTranslator(['x lamp']);
     await tr.init(VOCAB);
