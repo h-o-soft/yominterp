@@ -3,3 +3,9 @@ declare module '*?raw' {
   const content: string;
   export default content;
 }
+
+/** Vite の ?url import (アセット URL) の型宣言 */
+declare module '*?url' {
+  const url: string;
+  export default url;
+}

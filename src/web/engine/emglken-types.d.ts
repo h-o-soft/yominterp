@@ -8,8 +8,11 @@ declare module 'emglken' {
   export interface EmglkenVM {
     start(options: EmglkenVMStartOptions): void;
   }
-  /** 各エンジンは Emscripten モジュールファクトリ (await で VM インスタンス) */
-  export type VMFactory = () => Promise<EmglkenVM>;
+  /**
+   * 各エンジンは Emscripten モジュールファクトリ (await で VM インスタンス)。
+   * moduleArg で locateFile (wasm の URL 解決) 等を上書きできる。
+   */
+  export type VMFactory = (moduleArg?: Record<string, unknown>) => Promise<EmglkenVM>;
   export const Bocfel: VMFactory;
   export const BocfelNoZ6: VMFactory;
   export const Git: VMFactory;

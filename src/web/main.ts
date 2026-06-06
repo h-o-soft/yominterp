@@ -11,6 +11,23 @@ import { ExitTranslator } from '../core/translate/exit.js';
 import { usefulObjectNames } from '../core/translate/entry.js';
 import { BundledPromptProvider, FetchTransport, IdbCacheStore, RingLogger } from './adapters.js';
 import { EmglkenEngine } from './engine/emglken.js';
+// wasm のハッシュ付き URL。glue が locateFile を自前上書きするため、
+// バイナリを事前 fetch して Module.wasmBinary として注入する (詳細は emglken.ts)
+import bocfelWasmUrl from 'emglken/build/bocfel.wasm?url';
+import glulxeWasmUrl from 'emglken/build/glulxe.wasm?url';
+
+const WASM_URLS: Record<string, string> = {
+  bocfel: bocfelWasmUrl,
+  glulxe: glulxeWasmUrl,
+};
+
+function wasmLoader(vm: 'bocfel' | 'glulxe'): () => Promise<ArrayBuffer> {
+  return async () => {
+    const res = await fetch(WASM_URLS[vm]!);
+    if (!res.ok) throw new Error(`wasm の取得に失敗: HTTP ${res.status}`);
+    return res.arrayBuffer();
+  };
+}
 import { IdbSaveStore, ModalDialogPort } from './saves.js';
 import { DEFAULT_SETTINGS, type WebSettings, loadSettings, saveSettings } from './settings.js';
 import { analyzeStory, storyId } from './storyfile.js';
@@ -284,6 +301,7 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       storyData: data,
       dialogPort: new ModalDialogPort(),
       saveStore: new IdbSaveStore(id),
+      loadWasmBinary: wasmLoader('bocfel'),
     });
     session = new Session(engine, entry, {
       maxRetriesPerCommand: 2,
@@ -324,15 +342,7 @@ function wireSettings(): void {
   const modelList = $<HTMLDataListElement>('model-list');
   const testResult = $('test-result');
 
-  $('btn-settings').addEventListener('click', () => {
-    baseUrl.value = settings.baseUrl;
-    apiKey.value = settings.apiKey;
-    persist.checked = settings.persistKey;
-    model.value = settings.model;
-    testResult.textContent = '';
-    dialog.showModal();
-  });
-  dialog.addEventListener('close', () => {
+  const commit = () => {
     settings = {
       ...settings,
       baseUrl: baseUrl.value.trim().replace(/\/$/, '') || DEFAULT_SETTINGS.baseUrl,
@@ -341,7 +351,20 @@ function wireSettings(): void {
       model: model.value.trim(),
     };
     saveSettings(settings);
+  };
+
+  $('btn-settings').addEventListener('click', () => {
+    baseUrl.value = settings.baseUrl;
+    apiKey.value = settings.apiKey;
+    persist.checked = settings.persistKey;
+    model.value = settings.model;
+    testResult.textContent = '';
+    dialog.showModal();
   });
+  // close イベントだけに依存せず、変更の都度コミットする (取りこぼし防止)
+  for (const el of [baseUrl, apiKey, model]) el.addEventListener('change', commit);
+  persist.addEventListener('change', commit);
+  dialog.addEventListener('close', commit);
 
   $('btn-test').addEventListener('click', () => {
     void (async () => {

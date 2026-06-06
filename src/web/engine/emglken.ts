@@ -27,6 +27,15 @@ export interface EmglkenEngineOptions {
   storyData: Uint8Array;
   dialogPort: DialogPort;
   saveStore: SaveStore;
+  /**
+   * wasm バイナリの事前供給 (ブラウザバンドル用)。
+   * emglken の glue は Module.locateFile を**無条件で自前上書き**し、動的引数の
+   * `new URL(name, import.meta.url)` は Vite が rewrite できないため、ビルド後は
+   * 非ハッシュ名 (bocfel.wasm) への fetch になり SPA フォールバックの HTML を
+   * 読んで CompileError になる (実測)。Module.wasmBinary 注入なら glue の URL
+   * 解決自体をスキップできる。Node では省略 (glue が fs 経由で解決する)。
+   */
+  loadWasmBinary?: (() => Promise<ArrayBuffer>) | undefined;
 }
 
 /** settle 内容から EngineOutput を構築する (純関数・テスト可能) */
@@ -109,7 +118,11 @@ export class EmglkenEngine implements ZEngine {
     this.installExitTrap();
 
     const factory = await this.loadVM();
-    const vm = await factory();
+    const vm = await factory(
+      this.opts.loadWasmBinary !== undefined
+        ? { wasmBinary: await this.opts.loadWasmBinary() }
+        : {},
+    );
     vm.start({ arguments: [storyPath], GlkOte: this.capture, Dialog: this.dialog });
     return this.settle(undefined);
   }
