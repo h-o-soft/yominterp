@@ -438,19 +438,6 @@ function wireSettings(): void {
     })();
   });
 
-  $('btn-sample').addEventListener('click', () => {
-    void (async () => {
-      dialog.close();
-      try {
-        const res = await fetch(`${import.meta.env.BASE_URL}games/darkpit.z3`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        await startGame(new Uint8Array(await res.arrayBuffer()), 'darkpit.z3');
-      } catch (err) {
-        print('system', `サンプルの読み込みに失敗: ${String(err)}`);
-      }
-    })();
-  });
-
   const fileInput = $<HTMLInputElement>('file-input');
   $('btn-open').addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
@@ -460,6 +447,22 @@ function wireSettings(): void {
       dialog.close();
       await startGame(new Uint8Array(await file.arrayBuffer()), file.name);
       fileInput.value = '';
+    })();
+  });
+
+  $('btn-open-url').addEventListener('click', () => {
+    void (async () => {
+      const url = window.prompt('ストーリーファイルの URL (.z3/.z5/.z8 等):');
+      if (!url) return;
+      dialog.close();
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const name = new URL(url, location.href).pathname.split('/').pop() || 'story.z5';
+        await startGame(new Uint8Array(await res.arrayBuffer()), name);
+      } catch (err) {
+        print('system', `URL からの読み込みに失敗: ${String(err)} (配信元が CORS を許可している必要があります)`);
+      }
     })();
   });
 

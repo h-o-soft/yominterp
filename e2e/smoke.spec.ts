@@ -3,7 +3,12 @@
  * WASM ロード・asset パス・IndexedDB・localStorage・接続エラー表示など、
  * Node 結合テストでは壊れても検出できない層を対象にする。
  */
+import { existsSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
+
+// ゲーム本体は同梱しない (サンプルなし方針)。WASM 起動の煙テストは
+// ローカル専用のテスト素材 refs/darkzil/darkpit.z3 がある環境でのみ実行する。
+const DARKPIT = 'refs/darkzil/darkpit.z3';
 
 test('ページが起動し、未設定なら設定ダイアログが開く', async ({ page }) => {
   await page.goto('/');
@@ -26,13 +31,14 @@ test('設定が localStorage に永続される (apiKey は既定で永続しな
   expect(await page.evaluate(() => localStorage.getItem('yominterp-apikey'))).toBeNull();
 });
 
-test('サンプル (darkpit) が WASM で起動しイントロが表示される (LLM なし→原文フォールバック)', async ({
+test('ローカルファイルが WASM で起動しイントロが表示される (LLM なし→原文フォールバック)', async ({
   page,
 }) => {
+  test.skip(!existsSync(DARKPIT), `${DARKPIT} なし (ローカル専用テスト素材)`);
   await page.goto('/');
   await page.locator('#set-baseurl').fill('http://127.0.0.1:1/v1'); // 到達不能 endpoint
   await page.locator('#set-model').fill('dummy');
-  await page.getByRole('button', { name: 'サンプル: Dark Pit (MIT)' }).click();
+  await page.locator('#file-input').setInputFiles(DARKPIT);
   // LLM 不通の警告 → 原文で起動
   await expect(page.locator('#terminal')).toContainText('Dungeon Cell', { timeout: 45000 });
   await expect(page.locator('#terminal')).toContainText('old man');

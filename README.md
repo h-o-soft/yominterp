@@ -21,7 +21,7 @@ npx vite preview         # ローカルで配信 (または GitHub Pages へデ�
 
 1. 画面右上「設定」で LLM 接続先を設定 (例: LM Studio `http://127.0.0.1:1234/v1`)
 2. 「接続テスト」で疎通を確認 (モデル一覧 → 失敗時は chat 疎通にフォールバック)
-3. サンプル (Dark Pit, MIT) を起動するか、手持ちの story file を読み込む
+3. 手持ちの story file を「ファイルを開く」または「URLから開く」で読み込む (ゲームは同梱しません。IF Archive 等のフリー作品が利用できます)
 4. 日本語で指示 (「周りを見る」「老人と話す」…)。送信された英コマンドは薄色で常時表示され、「原文」ボタンで英語原文を併記できます。会話メニューはボタンで選択できます
 
 ### LLM 接続と CORS
@@ -72,4 +72,4 @@ npm run e2e              # Playwright ブラウザ煙テスト (要 npm run buil
 
 ## ライセンス
 
-本プロジェクトは MIT License。バンドルする VM (Bocfel / Glulxe / AsyncGlk / RemGlk-rs) はすべて MIT です (GPL のエンジンはバンドルしません — CI で検査)。同梱サンプル Dark Pit は Andy Kosela 作 (MIT、`public/games/` に license 同梱)。ゲームファイルの著作権は各作者に帰属します。
+本プロジェクトは MIT License。バンドルする VM (Bocfel / Glulxe / AsyncGlk / RemGlk-rs) はすべて MIT です (GPL のエンジンはバンドルしません — CI で検査)。ゲームファイルは同梱せず、ユーザーが用意します (著作権は各作者に帰属)。
