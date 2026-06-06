@@ -4,7 +4,7 @@
  */
 import { parseStatusLine } from '../core/engine.js';
 import { LLMClient } from '../core/llm/client.js';
-import { type MenuSpec, detectMenu, resolveMenuKey, translateMenuLabels } from '../core/menu.js';
+import { type MenuChoice, type MenuSpec, detectMenu, resolveMenuKey, splitMenuBlock } from '../core/menu.js';
 import { REAL_QUESTION_RE, Session, sendResolvingPauses } from '../core/session.js';
 import { EntryTranslator } from '../core/translate/entry.js';
 import { ExitTranslator } from '../core/translate/exit.js';
@@ -67,7 +67,7 @@ let exitTr: ExitTranslator | undefined;
 let llm: LLMClient | undefined;
 let activeMenu: MenuSpec | undefined;
 let lastMenuBody = '';
-let lastMenuTranslated = '';
+let lastMenuLabeled: MenuChoice[] = [];
 let gameOver = false;
 
 function makeLLM(): LLMClient {
@@ -113,14 +113,11 @@ function clearChoices(): void {
   activeMenu = undefined;
 }
 
-function showMenuChoices(spec: MenuSpec, body: string, translatedBody: string): void {
+function showMenuChoices(spec: MenuSpec, body: string, labeled: MenuChoice[]): void {
   activeMenu = spec;
   lastMenuBody = body;
-  lastMenuTranslated = translatedBody;
+  lastMenuLabeled = labeled;
   choices.innerHTML = '';
-  // ボタンのラベルは出口翻訳済み本文から対応付ける (CLI と同じ翻訳経路。
-  // 追加の LLM 呼び出しなし。見つからないキーは原文ラベルにフォールバック)
-  const labeled = translateMenuLabels(spec, translatedBody);
   for (const c of labeled) {
     const b = document.createElement('button');
     b.textContent = `${c.key}: ${c.label}`;
@@ -151,16 +148,55 @@ function showQuestionChoices(): void {
 
 // ---- ゲーム進行 ----
 
-async function afterOutput(
-  out: { body: string; kind: string; statusLine?: string },
-  translatedBody: string,
+/**
+ * メニューを MenuSpec ベースで構造整形して表示する。
+ * 地の文だけを通常の出口翻訳に通し、ヘッダ・各ラベルは個別に翻訳する
+ * (本文丸ごと翻訳だと LLM がメニューを 1 行に畳む・訳語が揺れる・
+ *  対応付けに失敗してボタンが英語のままになるため)。
+ * 個別翻訳はキャッシュされるので 2 回目以降は安定かつ即時。
+ */
+async function presentMenu(
+  out: { body: string; statusLine?: string },
+  spec: MenuSpec,
 ): Promise<void> {
-  // メニュー / 真の質問の検出と UI 提示
-  const spec = detectMenu(out.body);
-  if (spec !== undefined && out.kind !== 'gameover') {
-    showMenuChoices(spec, out.body, translatedBody);
+  showStatus(out.statusLine);
+  const { narrative, headerLine } = splitMenuBlock(out.body, spec);
+  if (narrative !== '') {
+    const ja = await translateOut(narrative);
+    print('', ja);
+    if (settings.showRaw && ja !== narrative) print('raw', narrative);
+  }
+  const cleanup = (t: string) => t.trim().replace(/^[「『"']+|[」』"'。]+$/g, '');
+  const headerJa = headerLine !== undefined ? cleanup(await translateOut(headerLine)) : '';
+  const labelsJa = await Promise.all(spec.choices.map((c) => translateOut(c.label)));
+  const labeled: MenuChoice[] = spec.choices.map((c, i) => ({
+    key: c.key,
+    label: cleanup(labelsJa[i] ?? '') || c.label,
+  }));
+  const menuLines = [
+    ...(headerJa !== '' ? [headerJa] : []),
+    ...labeled.map((c) => `  ${c.key}: ${c.label}`),
+    ...(spec.enterEnds ? ['  (空 Enter: 会話を終える)'] : []),
+  ];
+  print('', menuLines.join('\n'));
+  if (settings.showRaw) {
+    print('raw', [headerLine ?? '', ...spec.choices.map((c) => `  ${c.key}: ${c.label}`)].filter((l) => l !== '').join('\n'));
+  }
+  showMenuChoices(spec, out.body, labeled);
+}
+
+/** 出力 1 件の表示と後処理 (メニュー/質問/終了の UI 提示) */
+async function presentOutput(out: {
+  body: string;
+  kind: string;
+  statusLine?: string;
+}): Promise<void> {
+  const spec = out.kind !== 'gameover' ? detectMenu(out.body) : undefined;
+  if (spec !== undefined) {
+    await presentMenu(out, spec);
     return;
   }
+  await renderGameText(out.body, out.statusLine);
   clearChoices();
   if (out.kind === 'query' && REAL_QUESTION_RE.test(out.body.trimEnd())) {
     showQuestionChoices();
@@ -181,8 +217,7 @@ async function submitMenuSelection(key: string): Promise<void> {
     print('cmd', `> ${key === '' ? '(会話を終える)' : key}`);
     const out = await sendResolvingPauses(engine, key);
     session.pushGameOutput(out.body);
-    const ja = await renderGameText(out.body, out.statusLine);
-    await afterOutput(out, ja);
+    await presentOutput(out);
   } catch (err) {
     print('system', `エラー: ${String(err)}`);
   } finally {
@@ -198,8 +233,7 @@ async function submitDirect(command: string): Promise<void> {
     print('cmd', `> ${command}`);
     const out = await sendResolvingPauses(engine, command);
     session.pushGameOutput(out.body);
-    const ja = await renderGameText(out.body, out.statusLine);
-    await afterOutput(out, ja);
+    await presentOutput(out);
   } catch (err) {
     print('system', `エラー: ${String(err)}`);
   } finally {
@@ -237,7 +271,7 @@ async function handleUserInput(ja: string): Promise<void> {
       thinking.remove();
       if (selection === undefined) {
         print('system', `その選択肢はありません (${spec.choices.map((c) => c.key).join('/')})`);
-        showMenuChoices(spec, lastMenuBody, lastMenuTranslated);
+        showMenuChoices(spec, lastMenuBody, lastMenuLabeled);
         return;
       }
       await submitMenuSelection(selection);
@@ -246,22 +280,18 @@ async function handleUserInput(ja: string): Promise<void> {
 
     const turn = await session.handleUserInput(ja);
     thinking.remove();
-    let lastJa = '';
+    const lastResult = turn.results[turn.results.length - 1];
     for (const r of turn.results) {
       print('cmd', `> ${r.command}${r.corrected ? ' (自己修正)' : ''}`);
-      lastJa = await renderGameText(r.output.body, r.output.statusLine);
+      if (r === lastResult) await presentOutput(r.output);
+      else await renderGameText(r.output.body, r.output.statusLine);
     }
     if (turn.error !== undefined) {
       const isJa = /[^\x00-\x7f]/.test(turn.error);
       print('system', isJa ? turn.error : await translateOut(turn.error));
     }
     if (turn.aborted) print('cmd', '(途中で失敗したため残りの動作は中止しました)');
-    const last = turn.results[turn.results.length - 1];
-    if (last !== undefined) await afterOutput(last.output, lastJa);
-    if (turn.gameOver) {
-      gameOver = true;
-      print('system', '―― ゲーム終了 ――');
-    }
+    if (turn.gameOver) gameOver = true; // 表示は presentOutput 側
   } catch (err) {
     thinking.remove();
     print('system', `エラー: ${String(err)}`);
@@ -332,8 +362,7 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       out = await engine.send('');
     }
     session.pushGameOutput(out.body);
-    const introJa = await renderGameText(out.body, out.statusLine);
-    await afterOutput(out, introJa);
+    await presentOutput(out);
     print('system', '日本語で指示してください (例: 周りを見る)');
   } catch (err) {
     print('system', `起動エラー: ${String(err)}`);

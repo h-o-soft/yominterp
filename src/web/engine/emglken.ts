@@ -59,15 +59,22 @@ export function settledToOutput(settled: SettledUpdate, sentCommand: string | un
 
   // 拡大 grid (quote 画面・PunyInform 会話メニュー等) は本文の一部として扱う。
   // メニューは buffer の台詞と同時に grid 再描画されるため、buffer が
-  // 非空でも grid を先頭に連結する (dfrotz のレイアウトと同順)
-  if (settled.gridHeight > 3 && settled.gridLines.length > 0) {
-    const gridText = settled.gridLines.map((l) => l.trim()).join('\n');
-    body = body === '' ? gridText : `${gridText}\n\n${body}`;
-  }
-
-  // ステータス行: 小さい grid (≤3 行) の先頭行。大きい grid は本文扱いなので除外
+  // 非空でも grid を先頭に連結する (dfrotz のレイアウトと同順)。
+  // ただし grid 先頭に再描画されるステータス行は本文に混ぜず statusLine へ分離する
   let statusLine: string | undefined;
-  if (settled.gridHeight > 0 && settled.gridHeight <= 3) {
+  if (settled.gridHeight > 3 && settled.gridLines.length > 0) {
+    const contentLines: string[] = [];
+    for (const line of settled.gridLines) {
+      if (statusLine === undefined && parseStatusLine(line) !== undefined) {
+        statusLine = line;
+      } else {
+        contentLines.push(line.trim());
+      }
+    }
+    const gridText = contentLines.join('\n');
+    if (gridText !== '') body = body === '' ? gridText : `${gridText}\n\n${body}`;
+  } else if (settled.gridHeight > 0) {
+    // 小さい grid (≤3 行) はステータス行
     const candidate = settled.gridLines.find((l) => parseStatusLine(l) !== undefined);
     statusLine = candidate ?? settled.gridLines[0];
   }

@@ -90,44 +90,68 @@ export function detectMenu(body: string): MenuSpec | undefined {
   return detectNumbered(body) ?? detectLettered(body);
 }
 
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export interface MenuBlockSplit {
+  /** メニュー以外の地の文 (台詞・描写)。空のこともある */
+  narrative: string;
+  /** メニュー直前のヘッダ行 (例: "Talk to Cora about:") */
+  headerLine?: string;
 }
 
 /**
- * 出口翻訳済みテキストから各選択肢キーの和訳ラベルを対応付ける。
- * 翻訳でメニューが 1 行に畳まれることがある (実機: 「会話：1: コーラ 2: 休暇 3: 吹雪」)
- * ため、キーを**出現順に**走査し、次のキーまたは行末までをラベルとする。
- * 見つからないキーは原文ラベルのまま (フォールバック)。
+ * 本文からメニューブロック (ヘッダ + 選択肢行 + [ENTER] マーカー + 罫線) を
+ * 取り除き、地の文と分離する。
+ * UI はメニューを MenuSpec から構造的に整形し、翻訳はヘッダ/ラベルの中身にだけ
+ * 使う (本文丸ごと翻訳だと LLM がメニューを 1 行に畳む・訳語が揺れるため)。
  */
-export function translateMenuLabels(spec: MenuSpec, translatedText: string): MenuChoice[] {
-  // 各キーの出現位置を順序付きで探す
-  const hits: { choice: MenuChoice; labelStart: number }[] = [];
-  let cursor = 0;
-  for (const choice of spec.choices) {
-    const re = new RegExp(`(?:^|[\\s：:>（(])${escapeRe(choice.key)}\\s*[:.．：]\\s*`);
-    const m = re.exec(translatedText.slice(cursor));
-    if (m === null) continue;
-    const labelStart = cursor + m.index + m[0].length;
-    hits.push({ choice, labelStart });
-    cursor = labelStart;
+export function splitMenuBlock(body: string, spec: MenuSpec): MenuBlockSplit {
+  const lines = body.split('\n');
+  const choiceRe =
+    spec.kind === 'numbered' ? /^\s{0,8}(\d{1,2}):\s+\S/ : /^\s{0,8}([A-Z])[.)]\s+\S/;
+  const keySet = new Set(spec.choices.map((c) => c.key));
+
+  // 採用したメニューは「最後の」選択肢ブロック (detectLettered と同じ規則)
+  let first = -1;
+  let last = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const m = choiceRe.exec(lines[i]!);
+    if (m !== null && keySet.has(m[1]!)) {
+      if (first < 0 || (last >= 0 && i - last > 2)) first = i; // 離れたブロックは新規開始
+      last = i;
+    }
   }
-  const labelOf = new Map<string, string>();
-  for (let i = 0; i < hits.length; i++) {
-    const { choice, labelStart } = hits[i]!;
-    const nextStart = i + 1 < hits.length ? hits[i + 1]!.labelStart : translatedText.length;
-    // 次キーの "X:" プレフィックス部分や行末より手前で切る
-    let segment = translatedText.slice(labelStart, nextStart);
-    const newline = segment.indexOf('\n');
-    if (newline >= 0) segment = segment.slice(0, newline);
-    // "[Enter] 会話を終える" 等の角括弧マーカー以降は除去 (1 行畳み翻訳対策)
-    segment = segment.replace(/[\[［].*$/, '');
-    // 次キーの先頭 ("2:" の "2" の直前空白) を除去
-    segment = segment.replace(/[\s（(]*[0-9A-Za-z]\s*[:.．：]\s*$/, '');
-    const label = segment.trim();
-    if (label !== '') labelOf.set(choice.key, label);
+  if (first < 0) return { narrative: body };
+
+  const exclude = new Set<number>();
+  for (let i = first; i <= last; i++) exclude.add(i);
+  // ヘッダ: 選択肢の直前の非空行が ':' で終わる場合
+  let headerLine: string | undefined;
+  for (let i = first - 1; i >= 0; i--) {
+    const t = lines[i]!.trim();
+    if (t === '') continue;
+    if (/[:：]$/.test(t)) {
+      headerLine = t;
+      exclude.add(i);
+    }
+    break;
   }
-  return spec.choices.map((c) => ({ key: c.key, label: labelOf.get(c.key) ?? c.label }));
+  // メニュー後続の [ENTER] マーカー・罫線
+  for (let i = last + 1; i < lines.length; i++) {
+    const t = lines[i]!.trim();
+    if (t === '' || TALK_MENU_RE.test(t) || /^-{4,}$/.test(t)) {
+      if (t !== '') exclude.add(i);
+      continue;
+    }
+    break;
+  }
+
+  const narrative = lines
+    .filter((_, i) => !exclude.has(i))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  const result: MenuBlockSplit = { narrative };
+  if (headerLine !== undefined) result.headerLine = headerLine;
+  return result;
 }
 
 /** ユーザーの生入力をメニュー選択キーに解決する (キー直接入力のみ。日本語は LLM 側) */

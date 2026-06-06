@@ -153,6 +153,28 @@ describe('settledToOutput (EngineOutput 構築)', () => {
     expect(out.kind).toBe('query');
   });
 
+  it('拡大 grid 内のステータス行は本文に混ぜず statusLine へ分離する', () => {
+    const out = settledToOutput(
+      {
+        ...base,
+        bufferLines: ['You: "Hi."'],
+        gridLines: [
+          ' Vestibule      Score: 35     Moves: 11',
+          'Talk to Cora about:',
+          '1: Shopping',
+          '[ENTER] End conversation',
+        ],
+        gridHeight: 8,
+        input: { id: 2, gen: 3, type: 'char' },
+      },
+      undefined,
+    );
+    expect(out.statusLine).toMatch(/^ Vestibule/);
+    expect(out.body).not.toContain('Score: 35');
+    expect(out.body).toContain('Talk to Cora about:');
+    expect(out.body).toContain('You: "Hi."');
+  });
+
   it('小さい grid はステータス行として保持する', () => {
     const out = settledToOutput(
       {
