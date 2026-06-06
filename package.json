@@ -17,10 +17,13 @@
     "eval:paraphrase": "tsx src/verify/paraphrase-eval.ts",
     "proxy": "tsx scripts/yominterp-proxy.mts",
     "build:web": "vite build",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "dev": "vite",
+    "tauri": "tauri"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "@tauri-apps/cli": "^2.11.2",
     "@types/node": "^20.19.0",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
@@ -28,6 +31,8 @@
     "vitest": "^3.1.0"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-http": "^2.5.9",
     "emglken": "^0.7.2",
     "idb-keyval": "^6.2.5"
   }

@@ -11,6 +11,8 @@ node_modules/
 
 # ビルド成果物・テスト出力
 dist/
+src-tauri/target/
+src-tauri/gen/
 test-results/
 playwright-report/
 

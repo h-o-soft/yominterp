@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      # refs/ (ローカル専用素材) や LM Studio が無い環境では該当テストは自動スキップ
+      - run: npx vitest run
+      - run: npx vite build
+      # dist に GPL エンジン (tads/scare) が混入していないことを検査
+      - run: npx vitest run tests/dist-license.test.ts

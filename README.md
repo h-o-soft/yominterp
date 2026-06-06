@@ -3,7 +3,7 @@
 英語のインタラクティブフィクション (Z-machine 製) を、**LLM 翻訳層を挟んで日本語で遊ぶ**ためのプロジェクト。
 読み: ヨミンタープ (yomin = Enchanter の「心を読む」呪文 + interp(reter))。
 
-**▶ 遊ぶ: https://h-o-soft.github.io/yominterp/**
+> **配布形態について**: GitHub Pages 版は停止中です (公開 https サイトからローカル LLM への接続はブラウザの制約で中継 proxy が必要になり UX が悪いため)。**proxy 不要でローカル LLM に直結できる Tauri デスクトップ版へ移行中**です。それまではローカルでのビルド (下記) でお使いください。
 
 - 入口: 日本語の意図 → ゲームのパーサが受理する正規英コマンド (intent 変換 + 自己修正ループ)
 - 出口: ゲームの英語出力 → 日本語 (固有名詞グロッサリで表記一貫)
@@ -16,7 +16,7 @@
 ```bash
 npm install
 npm run build:web        # dist/ を生成
-npx vite preview         # ローカルで配信 (または GitHub Pages へデプロイ)
+npx vite preview         # ローカルで配信
 ```
 
 1. 画面右上「設定」で LLM 接続先を設定 (例: LM Studio `http://127.0.0.1:1234/v1`)

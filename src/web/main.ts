@@ -57,6 +57,19 @@ function setBusy(busy: boolean): void {
   if (!busy) input.focus();
 }
 
+// ---- Tauri ネイティブ HTTP (CORS/PNA 制約なしで 127.0.0.1 直結) ----
+let nativeFetch: import('./adapters.js').FetchLike | undefined;
+const isTauri = '__TAURI_INTERNALS__' in window;
+async function initNativeFetch(): Promise<void> {
+  if (!isTauri) return;
+  try {
+    const mod = await import('@tauri-apps/plugin-http');
+    nativeFetch = mod.fetch as import('./adapters.js').FetchLike;
+  } catch (err) {
+    console.warn('Tauri plugin-http が利用できません (ブラウザ fetch を使用):', err);
+  }
+}
+
 // ---- 状態 ----
 let settings: WebSettings = loadSettings();
 const logger = new RingLogger();
@@ -71,7 +84,7 @@ let lastMenuLabeled: MenuChoice[] = [];
 let gameOver = false;
 
 function makeLLM(): LLMClient {
-  return new LLMClient(new FetchTransport(settings.baseUrl, settings.apiKey), {
+  return new LLMClient(new FetchTransport(settings.baseUrl, settings.apiKey, nativeFetch), {
     model: settings.model,
     temperature: settings.temperature,
     maxTokens: settings.maxTokens,
@@ -411,7 +424,7 @@ function wireSettings(): void {
       testResult.className = '';
       testResult.textContent = '確認中…';
       const probe = new LLMClient(
-        new FetchTransport(baseUrl.value.trim().replace(/\/$/, ''), apiKey.value.trim()),
+        new FetchTransport(baseUrl.value.trim().replace(/\/$/, ''), apiKey.value.trim(), nativeFetch),
         { model: model.value.trim() || 'test', temperature: 0, maxTokens: 8, timeoutMs: 20000 },
       );
       try {
@@ -501,9 +514,69 @@ wireSettings();
 wireTopbar();
 print('system', 'yominterp — 英語のインタラクティブフィクションを日本語で遊ぶ');
 print('system', '右上の「設定」から LLM 接続先を設定し、ゲームを読み込んでください');
-if (settings.model === '') {
-  ($<HTMLDialogElement>('settings-dialog')).showModal();
+
+/**
+ * 自動検証モード (VITE_AUTOTEST=<collector URL> で起動した時のみ)。
+ * Tauri ネイティブ HTTP の直結実証用: collector からストーリーを取得し、
+ * LM Studio (127.0.0.1:1234) 直結で 2 ターンプレイして結果を POST する。
+ */
+async function runAutotest(collector: string): Promise<void> {
+  const f = nativeFetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
+  // report は native → browser の順で試す (どちらかが死んでいても結果を届ける)
+  const report = async (data: Record<string, unknown>): Promise<void> => {
+    const init: RequestInit = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(data),
+    };
+    try {
+      await f(`${collector}/result`, init);
+    } catch (e1) {
+      try {
+        await fetch(`${collector}/result`, { ...init, body: JSON.stringify({ ...data, reportVia: 'browser', nativeReportError: String(e1) }) });
+      } catch {
+        /* 届けられない */
+      }
+    }
+  };
+  try {
+    settings = {
+      ...settings,
+      baseUrl: 'http://127.0.0.1:1234/v1',
+      model: 'gemma-4-e4b-it-ud-japanese-imatrix',
+      apiKey: '',
+    };
+    const storyRes = await f(`${collector}/story`);
+    const story = new Uint8Array(await storyRes.arrayBuffer());
+    await startGame(story, 'autotest.z3');
+    await handleUserInput('周りを見る');
+    await handleUserInput('老人と話す');
+    const text = terminal.textContent ?? '';
+    const buttons = [...choices.querySelectorAll('button')].map((b) => b.textContent ?? '');
+    await report({
+      ok: true,
+      env: isTauri ? 'tauri' : 'browser',
+      nativeFetch: nativeFetch !== undefined,
+      tail: text.slice(-1200),
+      buttons,
+    });
+  } catch (err) {
+    await report({ ok: false, env: isTauri ? 'tauri' : 'browser', error: String(err) });
+  }
 }
+
+void (async () => {
+  await initNativeFetch();
+  if (isTauri) print('system', 'デスクトップ版: ローカル LLM へ直結します (CORS/proxy 設定は不要)');
+  const autotest = (import.meta.env.VITE_AUTOTEST as string | undefined) ?? '';
+  if (autotest !== '') {
+    await runAutotest(autotest);
+    return;
+  }
+  if (settings.model === '') {
+    ($<HTMLDialogElement>('settings-dialog')).showModal();
+  }
+})();
 // beforeunload 警告 (進行はメモリ上のみのため)
 addEventListener('beforeunload', (e) => {
   if (engine !== undefined && !gameOver) e.preventDefault();

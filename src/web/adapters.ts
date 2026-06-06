@@ -62,11 +62,18 @@ export class IdbCacheStore implements CacheStore {
   }
 }
 
-/** fetch による OpenAI 互換転送。接続失敗時に CORS ヒントを付与 */
+export type FetchLike = typeof fetch;
+
+/**
+ * fetch による OpenAI 互換転送。接続失敗時に CORS ヒントを付与。
+ * fetchFn を差し替え可能 (Tauri ではネイティブ HTTP (@tauri-apps/plugin-http) を
+ * 注入し、ブラウザの CORS/PNA 制約なしで 127.0.0.1 の LLM へ直結する)。
+ */
 export class FetchTransport implements LLMTransport {
   constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string,
+    private readonly fetchFn: FetchLike = (...args) => fetch(...args),
   ) {}
 
   private headers(): Record<string, string> {
@@ -107,7 +114,7 @@ export class FetchTransport implements LLMTransport {
 
   async post(path: string, body: unknown, timeoutMs: number): Promise<unknown> {
     try {
-      const res = await fetch(this.baseUrl + path, {
+      const res = await this.fetchFn(this.baseUrl + path, {
         ...this.extraInit(),
         method: 'POST',
         headers: this.headers(),
@@ -123,7 +130,7 @@ export class FetchTransport implements LLMTransport {
 
   async get(path: string, timeoutMs: number): Promise<unknown> {
     try {
-      const res = await fetch(this.baseUrl + path, {
+      const res = await this.fetchFn(this.baseUrl + path, {
         ...this.extraInit(),
         headers: this.headers(),
         signal: AbortSignal.timeout(timeoutMs),
