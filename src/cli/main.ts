@@ -16,7 +16,7 @@ import {
   type TurnResult,
   sendResolvingPauses,
 } from '../core/session.js';
-import { EntryTranslator } from '../core/translate/entry.js';
+import { EntryTranslator, usefulObjectNames } from '../core/translate/entry.js';
 import { ExitTranslator } from '../core/translate/exit.js';
 import { extractDictionary } from '../core/zfile/dictionary.js';
 import { objectNames } from '../core/zfile/objects.js';
@@ -81,7 +81,8 @@ async function main(): Promise<void> {
     new FileCacheStore(`${cfg.cacheDir}/exit-translations.json`),
     logger,
   );
-  await exit.init();
+  // 固有名詞グロッサリ (Cora=コーラ 等の正準表記) をオブジェクト名から構築
+  await exit.init(usefulObjectNames(vocab.objectNames));
 
   const engine = new DfrotzEngine(cfg.engine);
   const session = new Session(engine, entry, cfg.selfCorrect ? {

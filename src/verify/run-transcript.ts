@@ -18,7 +18,7 @@ import type { OutputKind } from '../core/engine.js';
 import { parseStatusLine } from '../core/engine.js';
 import { LLMClient } from '../core/llm/client.js';
 import { Session, type TurnResult, sendExhaustingMenus } from '../core/session.js';
-import { EntryTranslator, type TurnContext } from '../core/translate/entry.js';
+import { EntryTranslator, type TurnContext, usefulObjectNames } from '../core/translate/entry.js';
 import { ExitTranslator, fnv1a } from '../core/translate/exit.js';
 import { normalizeForCompare, tokenOverlap } from './compare.js';
 import { extractDictionary } from '../core/zfile/dictionary.js';
@@ -350,7 +350,7 @@ async function main(): Promise<void> {
   // 出口翻訳の目視レビュー用対訳サンプル (plan §7.7: 自動判定はしない)
   if (exitSamples > 0) {
     const exit = new ExitTranslator(llm, prompts, new FileCacheStore(`${cfg.cacheDir}/exit-translations.json`), logger);
-    await exit.init();
+    await exit.init(usefulObjectNames(objectNames(memory)));
     const lines: string[] = ['# 出口翻訳 目視レビュー用対訳サンプル', ''];
     for (const g of golden.slice(0, exitSamples)) {
       lines.push(`## > ${g.command}`, '', '```', g.body, '```', '', await exit.translate(g.body), '');
