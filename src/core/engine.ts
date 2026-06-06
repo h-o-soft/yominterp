@@ -17,6 +17,12 @@ export interface EngineOutput {
   statusLine?: string;
   /** 通常ターン / yes-no 等の中間入力待ち / ゲーム終了 */
   kind: OutputKind;
+  /**
+   * 入力要求の種別 (分かる場合のみ)。Glk 系エンジンはプロトコルから正確に判別できる。
+   * 'line' = 行入力 (通常コマンド) / 'char' = 1 キー入力 (pause・メニュー等)。
+   * dfrotz エンジンは設定しない (kind からの推測のみ)。
+   */
+  request?: 'line' | 'char';
 }
 
 export interface ZEngine {
