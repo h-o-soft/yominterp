@@ -97,3 +97,51 @@ describe('styleTranslatedParagraphs: 見出し分離ヒューリスティック'
     expect(out[1]!.style).toBeUndefined();
   });
 });
+
+describe('Pager / estimateLines (クラシックの [More] 送り)', () => {
+  it('estimateLines: 折返しと CJK 幅を概算する', async () => {
+    const { estimateLines } = await import('../src/web/ui/render.js');
+    expect(estimateLines('short')).toBe(1);
+    expect(estimateLines('a\nb\nc')).toBe(3);
+    expect(estimateLines('x'.repeat(170), 80)).toBe(3); // 170/80 → 3 行
+    expect(estimateLines('あ'.repeat(50), 80)).toBe(2); // 全角 50 = 幅 100 → 2 行
+  });
+
+  it('Pager: 1 ページを超える直前に waitFn を呼び、リセット後は呼ばない', async () => {
+    const { Pager } = await import('../src/web/ui/render.js');
+    let waits = 0;
+    const pager = new Pager(async () => void waits++, 10);
+    await pager.beforeAppend(6); // 6/10
+    expect(waits).toBe(0);
+    await pager.beforeAppend(6); // 超える → 待つ → 6/10
+    expect(waits).toBe(1);
+    await pager.beforeAppend(3); // 9/10
+    expect(waits).toBe(1);
+    pager.reset();
+    await pager.beforeAppend(9); // リセット後の最初は待たない
+    expect(waits).toBe(1);
+  });
+
+  it('Pager: 先頭ブロックが 1 ページ超でも待たずに表示する (空画面で止めない)', async () => {
+    const { Pager } = await import('../src/web/ui/render.js');
+    let waits = 0;
+    const pager = new Pager(async () => void waits++, 10);
+    await pager.beforeAppend(25);
+    expect(waits).toBe(0);
+  });
+});
+
+describe('splitForPaging (長段落のページ分割)', () => {
+  it('maxLines ごとにチャンクへ分割する', async () => {
+    const { splitForPaging } = await import('../src/web/ui/render.js');
+    const text = Array.from({ length: 25 }, (_, i) => `line${i}`).join('\n');
+    const chunks = splitForPaging(text, 80, 10);
+    expect(chunks).toHaveLength(3);
+    expect(chunks[0]!.split('\n')).toHaveLength(10);
+    expect(chunks.join('\n')).toBe(text); // 内容は欠落しない
+  });
+  it('短い段落はそのまま 1 チャンク', async () => {
+    const { splitForPaging } = await import('../src/web/ui/render.js');
+    expect(splitForPaging('a\nb', 80, 10)).toEqual(['a\nb']);
+  });
+});

@@ -51,6 +51,8 @@ export interface SettledUpdate {
   special?: GlkSpecialInput;
   /** disable=true かつ入力要求なし (VM 終了) */
   ended: boolean;
+  /** この settle 中に buffer window の clear (画面クリア) があった */
+  cleared: boolean;
   gen: number;
 }
 
@@ -118,6 +120,7 @@ export class GlkOteCapture {
   private pendingBuffer: StyledLine[] = [];
   private lastInput: GlkInputRequest | undefined;
   private lastSpecial: GlkSpecialInput | undefined;
+  private pendingCleared = false;
   private ended = false;
   private gen = 0;
   private settleWaiter: ((s: SettledUpdate) => void) | undefined;
@@ -191,7 +194,9 @@ export class GlkOteCapture {
         this.gridContent.set(c.id, lines);
       }
       if (c.text !== undefined) {
-        // buffer: 追加された段落のみ蓄積 (clear はバッファ画面の消去 — 蓄積には影響しない)
+        // buffer: 追加された段落のみ蓄積。clear は「画面クリア」信号として記録する
+        // (ghosts の引用画面→本編遷移で実測。蓄積済みテキストには影響しない)
+        if (c.clear === true) this.pendingCleared = true;
         if (info === undefined || info.type === 'buffer' || c.id !== -1) {
           for (const para of c.text) {
             const spans = (para.content ?? []).map((s) => resolveSpan(s, info?.styleMap));
@@ -308,8 +313,10 @@ export class GlkOteCapture {
       richGrid,
       gridHeight,
       ended: this.ended,
+      cleared: this.pendingCleared,
       gen: this.gen,
     };
+    this.pendingCleared = false;
     if (input !== undefined) settled.input = input;
     if (special !== undefined) settled.special = special;
     return settled;

@@ -115,3 +115,18 @@ body.classic #topbar {
 /* モダン表示 (トグルで切替): 余白広めの可変幅 */
 body.modern #app { max-width: 60rem; }
 body.modern #terminal p { max-width: 56rem; }
+
+/* [More] / キー待ちの続行バー */
+#terminal .more-bar {
+  display: block;
+  width: 100%;
+  margin: 0.6rem 0;
+  padding: 0.3rem;
+  background: var(--status-bg);
+  color: var(--accent);
+  border: 1px dashed var(--dim);
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+}

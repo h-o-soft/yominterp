@@ -125,3 +125,72 @@ export function gridPlainText(block: StyledBlock): string {
     .filter((t) => t !== '')
     .join('\n');
 }
+
+/**
+ * クラシック端末モードのページ送り (Lv: [More] 相当)。
+ * RemGlk/emglken はページャを持たない (全文を送るだけ) ため、フロント側で
+ * 「1 画面 = PAGE_LINES 行」を数え、超える前にユーザーの続行操作を待つ。
+ */
+export const PAGE_LINES = 20; // 24 行端末からステータス/入力行ぶんを引いた目安
+
+/** 表示幅の概算 (CJK は 2 桁換算) で折返し込みの行数を見積もる */
+export function estimateLines(text: string, cols = 80): number {
+  let total = 0;
+  for (const line of text.split('\n')) {
+    let width = 0;
+    for (const ch of line) {
+      width += ch.codePointAt(0)! > 0xff ? 2 : 1;
+    }
+    total += Math.max(1, Math.ceil(width / cols));
+  }
+  return total;
+}
+
+/** ページャ状態。waitFn (続行操作待ち) を注入してテスト可能にする */
+export class Pager {
+  private linesShown = 0;
+  constructor(
+    private readonly waitFn: () => Promise<void>,
+    private readonly pageLines: number | (() => number) = PAGE_LINES,
+  ) {}
+
+  private limit(): number {
+    return typeof this.pageLines === 'function' ? this.pageLines() : this.pageLines;
+  }
+
+  /** ターン開始等でページ位置をリセット */
+  reset(): void {
+    this.linesShown = 0;
+  }
+
+  /** ブロックを表示する直前に呼ぶ。必要なら続行操作を待つ */
+  async beforeAppend(estimatedLines: number): Promise<void> {
+    if (this.linesShown > 0 && this.linesShown + estimatedLines > this.limit()) {
+      await this.waitFn();
+      this.linesShown = 0;
+    }
+    this.linesShown += estimatedLines;
+  }
+}
+
+/**
+ * 長い段落をページ境界で分割する (段落途中でも [More] で止めるため)。
+ * 行は \n と概算折返し幅 (CJK=2 桁) で数える。
+ */
+export function splitForPaging(text: string, cols = 80, maxLines = PAGE_LINES): string[] {
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let count = 0;
+  for (const line of text.split('\n')) {
+    const est = Math.max(1, estimateLines(line, cols));
+    if (count > 0 && count + est > maxLines) {
+      chunks.push(current.join('\n'));
+      current = [];
+      count = 0;
+    }
+    current.push(line);
+    count += est;
+  }
+  if (current.length > 0) chunks.push(current.join('\n'));
+  return chunks;
+}

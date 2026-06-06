@@ -133,6 +133,7 @@ export function settledToOutput(settled: SettledUpdate, sentCommand: string | un
   if (statusLine !== undefined) out.statusLine = statusLine.trimEnd();
   if (request !== undefined) out.request = request;
   if (statusStyle !== undefined) out.statusStyle = statusStyle;
+  if (settled.cleared) out.cleared = true;
   const rich: StyledBlock[] = [];
   if (richGridBlock !== undefined) rich.push(richGridBlock);
   if (richParaLines.length > 0) rich.push({ kind: 'para', lines: richParaLines });

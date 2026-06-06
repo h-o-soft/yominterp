@@ -31,6 +31,11 @@ export interface EngineOutput {
   rich?: StyledBlock[];
   /** ステータス行の装飾 (ゲーム指定の色/反転。例: ghosts は赤の反転バー) */
   statusStyle?: SpanStyle;
+  /**
+   * この出力の前にゲームが画面クリアを要求した (Glk buffer window の clear)。
+   * クラシック表示モードはこれを honor して表示をクリアする。
+   */
+  cleared?: boolean;
 }
 
 /** スパンの解決済み装飾 (Style_* マップ + css_styles を合成したもの) */

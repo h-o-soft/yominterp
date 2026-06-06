@@ -104,6 +104,7 @@ describe('settledToOutput (EngineOutput 構築)', () => {
     richGrid: richOf([]),
     gridHeight: 0,
     ended: false,
+    cleared: false,
     gen: 1,
   };
 
@@ -302,6 +303,7 @@ describe('装飾の保持 (Lv1/Lv2)', () => {
         richGrid,
         gridHeight: 8,
         ended: false,
+        cleared: false,
         gen: 1,
         input: { id: 2, gen: 1, type: 'char' },
       },
@@ -328,6 +330,7 @@ describe('装飾の保持 (Lv1/Lv2)', () => {
         richGrid: [],
         gridHeight: 0,
         ended: false,
+        cleared: false,
         gen: 1,
         input: { id: 2, gen: 1, type: 'line' },
       },

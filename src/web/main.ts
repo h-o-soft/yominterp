@@ -32,7 +32,10 @@ import { IdbSaveStore, ModalDialogPort } from './saves.js';
 import { DEFAULT_SETTINGS, type WebSettings, loadSettings, saveSettings } from './settings.js';
 import { analyzeStory, storyId } from './storyfile.js';
 import {
+  Pager,
+  estimateLines,
   gridPlainText,
+  splitForPaging,
   styleToCss,
   styleTranslatedParagraphs,
 } from './ui/render.js';
@@ -99,6 +102,61 @@ function printRawRich(blocks: StyledBlock[]): void {
     terminal.appendChild(el);
   }
   terminal.scrollTop = terminal.scrollHeight;
+}
+
+/**
+ * クラシックモードの続行操作待ち ([More] / キー待ち)。
+ * バーを表示し、クリックまたは任意のキー入力で resolve する。
+ */
+function waitForContinue(label: string): Promise<void> {
+  return new Promise((resolve) => {
+    const bar = document.createElement('button');
+    bar.className = 'more-bar';
+    bar.textContent = label;
+    terminal.appendChild(bar);
+    terminal.scrollTop = terminal.scrollHeight;
+    const done = () => {
+      removeEventListener('keydown', onKey, true);
+      bar.remove();
+      resolve();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      done();
+    };
+    bar.addEventListener('click', done, { once: true });
+    addEventListener('keydown', onKey, { capture: true, once: true });
+    bar.focus();
+  });
+}
+
+/** 実画面の「1 ページ」行数 (端末ペインの高さ基準 — 本物のページャと同じ) */
+function screenPageLines(): number {
+  const lineHeight = parseFloat(getComputedStyle(terminal).lineHeight) || 24;
+  return Math.max(8, Math.floor(terminal.clientHeight / lineHeight) - 1);
+}
+
+const pager = new Pager(
+  () => waitForContinue('—— [More] クリックまたはキーで続き ——'),
+  screenPageLines,
+);
+
+/** ゲーム本文の表示前ゲート (クラシック時のみページ送り) */
+async function pageGate(text: string): Promise<void> {
+  if (!settings.classicMode) return;
+  await pager.beforeAppend(estimateLines(text, 80));
+}
+
+/** 画面クリア (クラシック時は端末を実際にクリア。モダンは区切り線) */
+function honorClear(): void {
+  if (settings.classicMode) {
+    terminal.innerHTML = '';
+  } else {
+    const hr = document.createElement('hr');
+    terminal.appendChild(hr);
+  }
+  pager.reset();
 }
 
 function setBusy(busy: boolean): void {
@@ -171,7 +229,10 @@ async function renderGameText(body: string, statusLineRaw?: string): Promise<str
   showStatus(statusLineRaw);
   if (body.trim() === '') return '';
   const ja = await translateOut(body);
-  print('', ja);
+  for (const chunk of settings.classicMode ? splitForPaging(ja, 80, screenPageLines()) : [ja]) {
+    await pageGate(chunk);
+    print('', chunk);
+  }
   if (settings.showRaw && ja !== body) print('raw', body);
   return ja;
 }
@@ -186,7 +247,10 @@ async function renderRichOutput(out: {
   statusLine?: string;
   statusStyle?: SpanStyle;
   rich?: StyledBlock[];
+  cleared?: boolean;
 }): Promise<string> {
+  // ゲームの画面クリア要求を honor (クラシック=実クリア / モダン=区切り線)
+  if (out.cleared === true) honorClear();
   showStatus(out.statusLine, out.statusStyle);
   if (out.rich === undefined) {
     return renderGameText(out.body);
@@ -198,6 +262,7 @@ async function renderRichOutput(out: {
     const plain = gridPlainText(grid);
     if (plain !== '') {
       const ja = await translateOut(plain);
+      await pageGate(ja);
       printGridBox(ja, uniformStyle(grid.lines));
       shown += ja;
     }
@@ -212,7 +277,10 @@ async function renderRichOutput(out: {
     if (plain !== '') {
       const ja = await translateOut(plain);
       for (const styled of styleTranslatedParagraphs(ja, paraLines)) {
-        printStyledPara(styled.text, styled.style);
+        for (const chunk of settings.classicMode ? splitForPaging(styled.text, 80, screenPageLines()) : [styled.text]) {
+          await pageGate(chunk);
+          printStyledPara(chunk, styled.style);
+        }
       }
       shown += (shown === '' ? '' : '\n\n') + ja;
     }
@@ -329,6 +397,7 @@ async function presentOutput(out: {
 async function submitMenuSelection(key: string): Promise<void> {
   if (engine === undefined || session === undefined) return;
   setBusy(true);
+  pager.reset();
   clearChoices();
   try {
     print('cmd', `> ${key === '' ? '(会話を終える)' : key}`);
@@ -345,6 +414,7 @@ async function submitMenuSelection(key: string): Promise<void> {
 async function submitDirect(command: string): Promise<void> {
   if (engine === undefined || session === undefined) return;
   setBusy(true);
+  pager.reset();
   clearChoices();
   try {
     print('cmd', `> ${command}`);
@@ -368,6 +438,7 @@ async function handleUserInput(ja: string): Promise<void> {
     return;
   }
   setBusy(true);
+  pager.reset();
   print('user', ja);
   const thinking = print('thinking', '考え中…');
   try {
@@ -467,15 +538,21 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       contextTurns: settings.contextTurns,
     }, logger);
 
-    print('system', `${filename} を起動中…`);
+    const loading = print('system', `${filename} を起動中…`);
+    pager.reset();
     let out = await engine.start();
-    // 冒頭の pause/引用画面: メニュー・真の質問でなければ表示して自動続行
+    loading.remove(); // 起動完了 → ローディング表示を消す
+    // 冒頭の pause/引用画面: メニュー・真の質問でなければ表示して進める。
+    // クラシックモードではゲームのキー待ちを honor し、ユーザーのキー入力を待つ
     while (
       out.kind === 'query' &&
       detectMenu(out.body) === undefined &&
       !REAL_QUESTION_RE.test(out.body.trimEnd())
     ) {
       await renderRichOutput(out);
+      if (settings.classicMode) {
+        await waitForContinue('—— キーを押して続行 ——');
+      }
       out = await engine.send('');
     }
     session.pushGameOutput(out.body);
