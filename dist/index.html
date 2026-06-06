@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- CSP: 外部スクリプト禁止。connect-src はユーザー設定の LLM endpoint へ接続するため制限しない -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src *; object-src 'none'; base-uri 'none'"
+    />
+    <title>zmachine-llm — 英語IFを日本語で遊ぶ</title>
+    <script type="module" crossorigin src="./assets/index-CyST8R2_.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Bshq8QSh.css">
+  </head>
+  <body>
+    <div id="app">
+      <header id="topbar">
+        <span id="status-line" title="ステータス行"></span>
+        <span id="topbar-buttons">
+          <button id="btn-raw" title="英語原文の表示を切り替え">原文</button>
+          <button id="btn-save" title="セーブ">保存</button>
+          <button id="btn-restore" title="ロード">再開</button>
+          <button id="btn-settings" title="設定">設定</button>
+        </span>
+      </header>
+      <main id="terminal" aria-live="polite"></main>
+      <footer id="inputbar">
+        <div id="choices" hidden></div>
+        <form id="input-form">
+          <span id="prompt-mark">&gt;</span>
+          <input id="input" autocomplete="off" placeholder="日本語で指示してください" disabled />
+          <button id="btn-send" disabled>送信</button>
+        </form>
+      </footer>
+    </div>
+
+    <dialog id="settings-dialog">
+      <form method="dialog" id="settings-form">
+        <h2>設定</h2>
+        <fieldset>
+          <legend>LLM 接続 (OpenAI 互換)</legend>
+          <label>Base URL <input id="set-baseurl" placeholder="http://127.0.0.1:1234/v1" /></label>
+          <label
+            >API Key <input id="set-apikey" type="password" autocomplete="off" />
+            <small><label><input type="checkbox" id="set-persistkey" />このブラウザに保存する (既定はメモリのみ。共有PCでは保存しないでください)</label></small>
+          </label>
+          <label>モデル <input id="set-model" list="model-list" /><datalist id="model-list"></datalist></label>
+          <button type="button" id="btn-test">接続テスト</button>
+          <span id="test-result"></span>
+        </fieldset>
+        <fieldset>
+          <legend>ゲーム</legend>
+          <div id="game-buttons">
+            <button type="button" id="btn-sample">サンプル: Dark Pit (MIT)</button>
+            <button type="button" id="btn-open">ファイルを開く…</button>
+            <input type="file" id="file-input" accept=".z3,.z4,.z5,.z8,.zblorb,.ulx,.gblorb" hidden />
+          </div>
+          <small>対応: .z3 .z4 .z5 .z8 .zblorb (Glulx は今後対応予定)</small>
+        </fieldset>
+        <fieldset>
+          <legend>その他</legend>
+          <button type="button" id="btn-download-log">ログをダウンロード</button>
+          <small id="about">
+            VM: emglken (Bocfel/Glulxe — MIT)。本アプリは MIT ライセンスで、ゲームファイルはユーザーが用意します。
+          </small>
+        </fieldset>
+        <menu>
+          <button value="cancel">閉じる</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="save-dialog">
+      <form method="dialog">
+        <h2 id="save-title">セーブ</h2>
+        <div id="save-slots"></div>
+        <label id="save-name-row">名前 <input id="save-name" placeholder="slot1" /></label>
+        <menu>
+          <button value="ok" id="save-ok">決定</button>
+          <button value="cancel">キャンセル</button>
+        </menu>
+      </form>
+    </dialog>
+
+  </body>
+</html>

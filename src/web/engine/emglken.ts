@@ -219,14 +219,15 @@ export class EmglkenEngine implements ZEngine {
   }
 
   private async loadVM(): Promise<import('emglken').VMFactory> {
-    const mod = await import('emglken');
+    // index ('emglken') を import すると GPL の tads/scare を含む全 wasm が
+    // バンドルに混入するため、必要なエンジンだけ個別 import する
     switch (this.opts.vm) {
       case 'bocfel':
-        return mod.Bocfel;
+        return (await import('emglken/build/bocfel.js')).default;
       case 'glulxe':
-        return mod.Glulxe;
+        return (await import('emglken/build/glulxe.js')).default;
       case 'git':
-        return mod.Git;
+        return (await import('emglken/build/git.js')).default;
     }
   }
 }
