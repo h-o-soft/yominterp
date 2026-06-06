@@ -96,13 +96,23 @@ describe('GlkOteCapture (状態機械)', () => {
 });
 
 describe('settledToOutput (EngineOutput 構築)', () => {
-  const base = { gridLines: [], gridHeight: 0, ended: false, gen: 1 };
+  /** プレーン文字列から rich 行を作る (テスト補助) */
+  const richOf = (lines: string[]) => lines.map((l) => ({ spans: [{ text: l }] }));
+  const richGridOf = richOf;
+  const base = {
+    gridLines: [] as string[],
+    richGrid: richOf([]),
+    gridHeight: 0,
+    ended: false,
+    gen: 1,
+  };
 
   it('echo と末尾プロンプトを除去し、line 要求は turn/request=line', () => {
     const out = settledToOutput(
       {
         ...base,
         bufferLines: ['look', '', 'Great Hall', 'A big hall.', '', '>'],
+        richBuffer: richOf(['look', '', 'Great Hall', 'A big hall.', '', '>']),
         input: { id: 2, gen: 1, type: 'line' },
       },
       'look',
@@ -114,7 +124,8 @@ describe('settledToOutput (EngineOutput 構築)', () => {
 
   it('char 要求は query/request=char', () => {
     const out = settledToOutput(
-      { ...base, bufferLines: ['Press a key...'], input: { id: 2, gen: 1, type: 'char' } },
+      { ...base, bufferLines: ['Press a key...'],
+        richBuffer: richOf(['Press a key...']), input: { id: 2, gen: 1, type: 'char' } },
       undefined,
     );
     expect(out.kind).toBe('query');
@@ -126,7 +137,9 @@ describe('settledToOutput (EngineOutput 構築)', () => {
       {
         ...base,
         bufferLines: [],
+        richBuffer: richOf([]),
         gridLines: ['  How you have fallen', '  -- Isaiah 14:12'],
+        richGrid: richGridOf(['  How you have fallen', '  -- Isaiah 14:12']),
         gridHeight: 12,
         input: { id: 2, gen: 1, type: 'char' },
       },
@@ -141,7 +154,9 @@ describe('settledToOutput (EngineOutput 構築)', () => {
       {
         ...base,
         bufferLines: ['You: "Hey Rosie."', 'Rosie: "Hello."'],
+        richBuffer: richOf(['You: "Hey Rosie."', 'Rosie: "Hello."']),
         gridLines: ['Talk to Rosie about:', '1: Cora', '[ENTER] End conversation'],
+        richGrid: richGridOf(['Talk to Rosie about:', '1: Cora', '[ENTER] End conversation']),
         gridHeight: 8,
         input: { id: 2, gen: 3, type: 'char' },
       },
@@ -158,12 +173,19 @@ describe('settledToOutput (EngineOutput 構築)', () => {
       {
         ...base,
         bufferLines: ['You: "Hi."'],
+        richBuffer: richOf(['You: "Hi."']),
         gridLines: [
           ' Vestibule      Score: 35     Moves: 11',
           'Talk to Cora about:',
           '1: Shopping',
           '[ENTER] End conversation',
         ],
+        richGrid: richGridOf([
+          ' Vestibule      Score: 35     Moves: 11',
+          'Talk to Cora about:',
+          '1: Shopping',
+          '[ENTER] End conversation',
+        ]),
         gridHeight: 8,
         input: { id: 2, gen: 3, type: 'char' },
       },
@@ -180,7 +202,9 @@ describe('settledToOutput (EngineOutput 構築)', () => {
       {
         ...base,
         bufferLines: ['You are here.'],
+        richBuffer: richOf(['You are here.']),
         gridLines: [' Great Hall      Score: 0     Moves: 1'],
+        richGrid: richGridOf([' Great Hall      Score: 0     Moves: 1']),
         gridHeight: 1,
         input: { id: 2, gen: 1, type: 'line' },
       },
@@ -191,12 +215,130 @@ describe('settledToOutput (EngineOutput 構築)', () => {
   });
 
   it('ended は gameover、本文の *** バナーでも gameover', () => {
-    expect(settledToOutput({ ...base, bufferLines: [], ended: true }, undefined).kind).toBe('gameover');
+    expect(settledToOutput({ ...base, bufferLines: [],
+        richBuffer: richOf([]), ended: true }, undefined).kind).toBe('gameover');
     expect(
       settledToOutput(
-        { ...base, bufferLines: ['*** You have died ***'], input: { id: 2, gen: 1, type: 'line' } },
+        { ...base, bufferLines: ['*** You have died ***'],
+        richBuffer: richOf(['*** You have died ***']), input: { id: 2, gen: 1, type: 'line' } },
         undefined,
       ).kind,
     ).toBe('gameover');
+  });
+});
+
+describe('装飾の保持 (Lv1/Lv2)', () => {
+  it('capture: window の Style_* マップと css_styles を SpanStyle に解決する', async () => {
+    const { cap } = makeCapture();
+    const p = cap.waitSettle();
+    cap.update({
+      type: 'update',
+      gen: 1,
+      windows: [
+        {
+          id: 2,
+          type: 'buffer',
+          styles: {
+            '.Style_subheader': { 'font-weight': 'bold', 'font-style': 'normal', monospace: 0 },
+            '.Style_emphasized': { 'font-weight': 'normal', 'font-style': 'italic', monospace: 0 },
+          },
+        },
+      ],
+      content: [
+        {
+          id: 2,
+          text: [
+            { content: [{ style: 'subheader', text: 'Great Hall' }] },
+            {
+              content: [
+                { style: 'normal', text: 'A ' },
+                { style: 'emphasized', text: 'very' },
+                { style: 'normal', text: ' big hall.' },
+              ],
+            },
+            {
+              content: [
+                {
+                  style: 'normal',
+                  text: 'Red alert',
+                  css_styles: { color: '#EF0000', 'background-color': '#000000', reverse: 1 },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      input: [{ id: 2, gen: 1, type: 'line' }],
+    } as never);
+    const s = await p;
+    expect(s.richBuffer[0]!.spans[0]).toEqual({
+      text: 'Great Hall',
+      style: { styleName: 'subheader', bold: true },
+    });
+    expect(s.richBuffer[1]!.spans[1]).toEqual({
+      text: 'very',
+      style: { styleName: 'emphasized', italic: true },
+    });
+    expect(s.richBuffer[2]!.spans[0]!.style).toMatchObject({
+      reverse: true,
+      fg: '#EF0000',
+      bg: '#000000',
+    });
+    // プレーン側は従来どおりの連結
+    expect(s.bufferLines[1]).toBe('A very big hall.');
+  });
+
+  it('settledToOutput: 拡大 grid は rich の grid ブロックとして桁/空白を保持する', () => {
+    const richGrid = [
+      { spans: [{ text: ' Hall    Score: 0     Moves: 1', style: { reverse: true, fg: '#EF0000' } }] },
+      { spans: [{ text: '   ' }, { text: ' quote line ', style: { reverse: true } }, { text: '   ' }] },
+      { spans: [{ text: '   ' }, { text: '  -- Author ', style: { reverse: true } }, { text: '   ' }] },
+    ];
+    const out = settledToOutput(
+      {
+        bufferLines: [],
+        richBuffer: [],
+        gridLines: [' Hall    Score: 0     Moves: 1', '    quote line    ', '     -- Author    '],
+        richGrid,
+        gridHeight: 8,
+        ended: false,
+        gen: 1,
+        input: { id: 2, gen: 1, type: 'char' },
+      },
+      undefined,
+    );
+    expect(out.rich).toBeDefined();
+    const grid = out.rich![0]!;
+    expect(grid.kind).toBe('grid');
+    // ステータス行は rich からも除外され statusStyle に回る
+    expect(grid.lines).toHaveLength(2);
+    expect(grid.lines[0]!.spans[1]!.text).toBe(' quote line '); // 空白桁保持
+    expect(out.statusStyle).toMatchObject({ reverse: true, fg: '#EF0000' });
+  });
+
+  it('settledToOutput: buffer の echo 除去が rich にも同期する', () => {
+    const lines = ['look', '', 'Great Hall', 'desc.', '', '>'];
+    const out = settledToOutput(
+      {
+        bufferLines: lines,
+        richBuffer: lines.map((l) => ({
+          spans: [{ text: l, ...(l === 'Great Hall' ? { style: { styleName: 'subheader', bold: true } } : {}) }],
+        })),
+        gridLines: [],
+        richGrid: [],
+        gridHeight: 0,
+        ended: false,
+        gen: 1,
+        input: { id: 2, gen: 1, type: 'line' },
+      },
+      'look',
+    );
+    const para = out.rich!.find((b) => b.kind === 'para')!;
+    expect(para.lines.map((l) => l.spans.map((s) => s.text).join(''))).toEqual([
+      '',
+      'Great Hall',
+      'desc.',
+    ]);
+    expect(para.lines[1]!.spans[0]!.style).toMatchObject({ bold: true });
   });
 });

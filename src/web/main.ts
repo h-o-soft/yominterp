@@ -31,6 +31,13 @@ function wasmLoader(vm: 'bocfel' | 'glulxe'): () => Promise<ArrayBuffer> {
 import { IdbSaveStore, ModalDialogPort } from './saves.js';
 import { DEFAULT_SETTINGS, type WebSettings, loadSettings, saveSettings } from './settings.js';
 import { analyzeStory, storyId } from './storyfile.js';
+import {
+  gridPlainText,
+  styleToCss,
+  styleTranslatedParagraphs,
+} from './ui/render.js';
+import type { EngineOutput, SpanStyle, StyledBlock, StyledLine } from '../core/engine.js';
+import { uniformStyle } from '../core/engine.js';
 
 // ---- DOM ----
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
@@ -49,6 +56,49 @@ function print(cls: string, text: string): HTMLParagraphElement {
   terminal.appendChild(p);
   terminal.scrollTop = terminal.scrollHeight;
   return p;
+}
+
+/** 段落一様装飾付きの段落を出力する (Lv1) */
+function printStyledPara(text: string, style: SpanStyle | undefined): void {
+  const p = print('', text);
+  const css = styleToCss(style);
+  if (css.classes.length > 0 || css.inline !== '') {
+    p.classList.add('styled', ...css.classes);
+    if (css.inline !== '') p.setAttribute('style', css.inline);
+  }
+}
+
+/** quote box (grid ブロック) を装飾付きで出力する。中身は訳文テキスト */
+function printGridBox(text: string, style: SpanStyle | undefined): void {
+  const div = document.createElement('div');
+  div.className = 'gridbox';
+  div.textContent = text;
+  const css = styleToCss(style ?? { reverse: true });
+  div.classList.add(...css.classes);
+  if (css.inline !== '') div.setAttribute('style', css.inline);
+  terminal.appendChild(div);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+/** 原文ビュー (Lv2): スパン装飾を忠実に描画する */
+function printRawRich(blocks: StyledBlock[]): void {
+  for (const block of blocks) {
+    const el = document.createElement(block.kind === 'grid' ? 'div' : 'p');
+    el.className = block.kind === 'grid' ? 'gridbox raw' : 'raw';
+    for (const [i, line] of block.lines.entries()) {
+      for (const span of line.spans) {
+        const sp = document.createElement('span');
+        sp.textContent = span.text;
+        const css = styleToCss(span.style);
+        if (css.classes.length > 0) sp.classList.add(...css.classes);
+        if (css.inline !== '') sp.setAttribute('style', css.inline);
+        el.appendChild(sp);
+      }
+      if (i < block.lines.length - 1) el.appendChild(document.createTextNode('\n'));
+    }
+    terminal.appendChild(el);
+  }
+  terminal.scrollTop = terminal.scrollHeight;
 }
 
 function setBusy(busy: boolean): void {
@@ -92,12 +142,19 @@ function makeLLM(): LLMClient {
   }, logger);
 }
 
-function showStatus(line: string | undefined): void {
+function showStatus(line: string | undefined, style?: SpanStyle): void {
   if (line === undefined) return;
   const s = parseStatusLine(line);
   statusLine.textContent = s
     ? `${s.room}  得点: ${s.score}  手数: ${s.moves}`
     : line.trim();
+  // ゲーム指定のステータス色 (例: ghosts は赤の反転バー) を topbar に反映
+  const topbar = document.getElementById('topbar')!;
+  const css = styleToCss(style);
+  if (css.inline !== '') {
+    topbar.setAttribute('style', css.inline);
+    statusLine.setAttribute('style', 'color: inherit');
+  }
 }
 
 async function translateOut(body: string): Promise<string> {
@@ -117,6 +174,51 @@ async function renderGameText(body: string, statusLineRaw?: string): Promise<str
   print('', ja);
   if (settings.showRaw && ja !== body) print('raw', body);
   return ja;
+}
+
+/**
+ * 装飾付き出力の描画 (Lv1): grid ブロックは quote box として、buffer 段落は
+ * 段落一様装飾を訳文に対応付けて描画する。rich が無いエンジンは従来描画。
+ * 戻り値は表示した訳文 (メニュー検出やセッション履歴は従来どおり body を使う)。
+ */
+async function renderRichOutput(out: {
+  body: string;
+  statusLine?: string;
+  statusStyle?: SpanStyle;
+  rich?: StyledBlock[];
+}): Promise<string> {
+  showStatus(out.statusLine, out.statusStyle);
+  if (out.rich === undefined) {
+    return renderGameText(out.body);
+  }
+  const grid = out.rich.find((b) => b.kind === 'grid');
+  const para = out.rich.find((b) => b.kind === 'para');
+  let shown = '';
+  if (grid !== undefined) {
+    const plain = gridPlainText(grid);
+    if (plain !== '') {
+      const ja = await translateOut(plain);
+      printGridBox(ja, uniformStyle(grid.lines));
+      shown += ja;
+    }
+  }
+  if (para !== undefined) {
+    const paraLines: StyledLine[] = para.lines;
+    const plain = paraLines
+      .map((l) => l.spans.map((sp) => sp.text).join(''))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    if (plain !== '') {
+      const ja = await translateOut(plain);
+      for (const styled of styleTranslatedParagraphs(ja, paraLines)) {
+        printStyledPara(styled.text, styled.style);
+      }
+      shown += (shown === '' ? '' : '\n\n') + ja;
+    }
+  }
+  if (settings.showRaw && out.rich.length > 0) printRawRich(out.rich);
+  return shown;
 }
 
 // ---- メニュー UI ----
@@ -169,10 +271,10 @@ function showQuestionChoices(): void {
  * 個別翻訳はキャッシュされるので 2 回目以降は安定かつ即時。
  */
 async function presentMenu(
-  out: { body: string; statusLine?: string },
+  out: { body: string; statusLine?: string; statusStyle?: SpanStyle },
   spec: MenuSpec,
 ): Promise<void> {
-  showStatus(out.statusLine);
+  showStatus(out.statusLine, out.statusStyle);
   const { narrative, headerLine } = splitMenuBlock(out.body, spec);
   if (narrative !== '') {
     const ja = await translateOut(narrative);
@@ -203,13 +305,15 @@ async function presentOutput(out: {
   body: string;
   kind: string;
   statusLine?: string;
+  statusStyle?: SpanStyle;
+  rich?: StyledBlock[];
 }): Promise<void> {
   const spec = out.kind !== 'gameover' ? detectMenu(out.body) : undefined;
   if (spec !== undefined) {
     await presentMenu(out, spec);
     return;
   }
-  await renderGameText(out.body, out.statusLine);
+  await renderRichOutput(out);
   clearChoices();
   if (out.kind === 'query' && REAL_QUESTION_RE.test(out.body.trimEnd())) {
     showQuestionChoices();
@@ -297,7 +401,7 @@ async function handleUserInput(ja: string): Promise<void> {
     for (const r of turn.results) {
       print('cmd', `> ${r.command}${r.corrected ? ' (自己修正)' : ''}`);
       if (r === lastResult) await presentOutput(r.output);
-      else await renderGameText(r.output.body, r.output.statusLine);
+      else await renderRichOutput(r.output);
     }
     if (turn.error !== undefined) {
       const isJa = /[^\x00-\x7f]/.test(turn.error);
@@ -371,7 +475,7 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       detectMenu(out.body) === undefined &&
       !REAL_QUESTION_RE.test(out.body.trimEnd())
     ) {
-      await renderGameText(out.body, out.statusLine);
+      await renderRichOutput(out);
       out = await engine.send('');
     }
     session.pushGameOutput(out.body);
@@ -489,7 +593,22 @@ function wireSettings(): void {
   });
 }
 
+function applyLayoutMode(): void {
+  document.body.classList.toggle('classic', settings.classicMode);
+  document.body.classList.toggle('modern', !settings.classicMode);
+}
+
 function wireTopbar(): void {
+  const layoutButton = $('btn-layout');
+  applyLayoutMode();
+  layoutButton.classList.toggle('active', settings.classicMode);
+  layoutButton.addEventListener('click', () => {
+    settings.classicMode = !settings.classicMode;
+    layoutButton.classList.toggle('active', settings.classicMode);
+    applyLayoutMode();
+    saveSettings(settings);
+  });
+
   const rawButton = $('btn-raw');
   rawButton.classList.toggle('active', settings.showRaw);
   rawButton.addEventListener('click', () => {

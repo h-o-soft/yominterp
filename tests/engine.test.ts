@@ -73,3 +73,24 @@ describe('looksGameOver', () => {
     expect(looksGameOver('You open the door. It creaks.')).toBe(false);
   });
 });
+
+describe('uniformStyle (段落一様装飾の判定)', () => {
+  it('全スパン同一装飾ならそれを返す (空白のみスパンは無視)', async () => {
+    const { uniformStyle } = await import('../src/core/engine.js');
+    const style = { reverse: true, fg: '#FFF' };
+    expect(
+      uniformStyle([
+        { spans: [{ text: '  ' }, { text: 'quote', style }, { text: '  ' }] },
+        { spans: [{ text: 'line 2', style }] },
+      ]),
+    ).toEqual(style);
+  });
+  it('装飾が混在すれば undefined', async () => {
+    const { uniformStyle } = await import('../src/core/engine.js');
+    expect(
+      uniformStyle([
+        { spans: [{ text: 'a', style: { bold: true } }, { text: 'b', style: { italic: true } }] },
+      ]),
+    ).toBeUndefined();
+  });
+});

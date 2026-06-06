@@ -23,6 +23,64 @@ export interface EngineOutput {
    * dfrotz エンジンは設定しない (kind からの推測のみ)。
    */
   request?: 'line' | 'char';
+  /**
+   * 装飾付きの構造化テキスト (分かるエンジンのみ。Glk 系はプロトコルが運ぶ)。
+   * body と同じ内容の装飾版で、表示専用 — 翻訳・比較・メニュー検出は従来どおり
+   * body (プレーン) を使う。dfrotz エンジンは設定しない。
+   */
+  rich?: StyledBlock[];
+  /** ステータス行の装飾 (ゲーム指定の色/反転。例: ghosts は赤の反転バー) */
+  statusStyle?: SpanStyle;
+}
+
+/** スパンの解決済み装飾 (Style_* マップ + css_styles を合成したもの) */
+export interface SpanStyle {
+  bold?: boolean;
+  italic?: boolean;
+  monospace?: boolean;
+  reverse?: boolean;
+  /** CSS color 値 (例: '#EF0000') */
+  fg?: string;
+  bg?: string;
+  /** Glk スタイル名 (subheader/emphasized/input 等。CSS クラス付与用) */
+  styleName?: string;
+}
+
+export interface StyledSpan {
+  text: string;
+  style?: SpanStyle;
+}
+
+export interface StyledLine {
+  spans: StyledSpan[];
+}
+
+/**
+ * 表示ブロック。
+ * - 'grid': 上部ウィンドウ由来 (quote box 等)。固定ピッチ・桁/空白をそのまま保持
+ * - 'para': buffer 由来の段落 (1 行 = 1 段落)
+ */
+export interface StyledBlock {
+  kind: 'grid' | 'para';
+  lines: StyledLine[];
+}
+
+/** 行内の全スパンが同一装飾ならそれを返す (段落一様装飾の判定用) */
+export function uniformStyle(lines: StyledLine[]): SpanStyle | undefined {
+  let found: SpanStyle | undefined;
+  for (const line of lines) {
+    for (const span of line.spans) {
+      if (span.text.trim() === '') continue; // 空白のみのスパンは装飾判定から除外
+      const s = span.style ?? {};
+      if (found === undefined) {
+        found = s;
+      } else if (JSON.stringify(found) !== JSON.stringify(s)) {
+        return undefined;
+      }
+    }
+  }
+  // 無装飾 ({} のみ) は undefined に正規化
+  return found !== undefined && Object.keys(found).length > 0 ? found : undefined;
 }
 
 export interface ZEngine {
