@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 
 export default defineConfig({
@@ -7,5 +8,8 @@ export default defineConfig({
     outDir: 'dist',
     target: 'es2022',
   },
-  // emglken の wasm は import.meta.url 経由で解決される (Vite が asset 化する)
+  test: {
+    // e2e/ は Playwright 専用 (npm run e2e)
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+  },
 });
