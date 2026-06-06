@@ -239,8 +239,8 @@ export class DfrotzEngine implements ZEngine {
     const raw = this.buffer;
     this.buffer = '';
     const { body, statusLine } = splitRawOutput(raw);
-    const kind: OutputKind =
-      baseKind === 'turn' && looksGameOver(body) ? 'gameover' : baseKind;
+    // "*** The End ***" 等は RESTART 問い (query) として届いても gameover とみなす
+    const kind: OutputKind = looksGameOver(body) ? 'gameover' : baseKind;
     const out: EngineOutput = { raw, body, kind };
     if (statusLine !== undefined) out.statusLine = statusLine;
     pending.resolve(out);
