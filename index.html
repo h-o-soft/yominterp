@@ -3,10 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- CSP: 外部スクリプト禁止。connect-src はユーザー設定の LLM endpoint へ接続するため制限しない -->
+    <!-- CSP: 外部スクリプト禁止。connect-src はユーザー設定の LLM endpoint へ接続するため http/https を許可
+         (https ページからの http://127.0.0.1 ローカル LLM 接続は loopback 例外で可能だが、
+          connect-src * はスキーム違いの http: を含まないため明示する) -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src *; object-src 'none'; base-uri 'none'"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https: http:; object-src 'none'; base-uri 'none'"
     />
     <title>yominterp — 英語IFを日本語で遊ぶ</title>
     <link rel="stylesheet" href="/src/web/style.css" />
