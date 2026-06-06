@@ -1,0 +1,31 @@
+{
+  "llm": {
+    "baseUrl": "http://127.0.0.1:1234/v1",
+    "apiKey": "lm-studio",
+    "model": "gemma-4-e4b-it-ud-japanese-imatrix",
+    "entryModel": null,
+    "exitModel": null,
+    "temperature": 0,
+    "maxTokens": 1024,
+    "timeoutMs": 120000
+  },
+  "engine": {
+    "dfrotzPath": "dfrotz",
+    "storyFile": "refs/ghosts_R14/ghosts.z5",
+    "seed": 1234,
+    "workDir": "/tmp/zllm",
+    "width": 100,
+    "quiescenceMs": 60,
+    "queryTimeoutMs": 800,
+    "hardTimeoutMs": 10000
+  },
+  "selfCorrect": {
+    "maxRetriesPerCommand": 2,
+    "maxLlmCallsPerInput": 8
+  },
+  "context": {
+    "turns": 2
+  },
+  "cacheDir": ".cache",
+  "logDir": "logs"
+}

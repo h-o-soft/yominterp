@@ -10,12 +10,8 @@ import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { parseStatusLine } from '../core/engine.js';
 import { LLMClient } from '../core/llm/client.js';
-import {
-  Session,
-  TALK_MENU_RE,
-  type TurnResult,
-  sendResolvingPauses,
-} from '../core/session.js';
+import { detectMenu, resolveMenuKey } from '../core/menu.js';
+import { Session, type TurnResult, sendResolvingPauses } from '../core/session.js';
 import { EntryTranslator, usefulObjectNames } from '../core/translate/entry.js';
 import { ExitTranslator } from '../core/translate/exit.js';
 import { extractDictionary } from '../core/zfile/dictionary.js';
@@ -193,26 +189,36 @@ async function main(): Promise<void> {
       if (showRaw && r.output.body !== '') console.log(`${DIM}${r.output.body}${RESET}`);
     }
 
-    // 会話メニュー: プレイヤーが選択肢を選ぶ対話ループ
+    // 会話メニュー (番号式 / 文字式): プレイヤーが選択肢を選ぶ対話ループ
     let menuOut = turn.results[turn.results.length - 1]?.output;
-    while (menuOut !== undefined && menuOut.kind === 'query' && TALK_MENU_RE.test(menuOut.body)) {
-      // メニューに実在する番号 (`  1: Topic` 行) を抽出してバリデーションに使う
-      const validNumbers = new Set(
-        [...menuOut.body.matchAll(/^\s*(\d+):/gm)].map((m) => m[1]!),
-      );
+    let menuSpec = menuOut !== undefined ? detectMenu(menuOut.body) : undefined;
+    while (menuOut !== undefined && menuSpec !== undefined) {
+      const keys = menuSpec.choices.map((c) => c.key).join('/');
+      const endHint = menuSpec.enterEnds
+        ? ' / 空 Enter で会話を終える'
+        : menuSpec.endKey !== undefined
+          ? ` / 空 Enter = ${menuSpec.endKey} (会話を終える)`
+          : '';
       const raw = (
-        (await ask(`${DIM}(番号で選択 / 日本語で指示 / 空 Enter で会話を終える)${RESET}\n? `)) ?? ''
-      ).trim(); // stdin 終端なら会話を終える
-      let selection: string;
+        (await ask(`${DIM}(${keys} で選択 / 日本語で指示${endHint})${RESET}\n? `)) ?? ''
+      ).trim(); // stdin 終端なら会話を終える扱い
+      let selection: string | undefined;
       if (raw === '' || ['終わる', '終える', '終了', 'やめる', '/end'].includes(raw)) {
-        selection = '';
-      } else if (/^\d{1,2}$/.test(raw)) {
-        selection = raw;
+        selection = menuSpec.enterEnds ? '' : menuSpec.endKey;
+      } else if (/^[A-Za-z0-9]{1,2}$/.test(raw)) {
+        selection = resolveMenuKey(menuSpec, raw);
       } else {
-        selection = await entry.selectMenuOption(raw, menuOut.body);
+        // 日本語指示 → 入口 LLM でキーに変換 ('' = 終了の意図)
+        const llmKey = await entry.selectMenuOption(raw, menuOut.body);
+        selection =
+          llmKey === ''
+            ? menuSpec.enterEnds
+              ? ''
+              : menuSpec.endKey
+            : resolveMenuKey(menuSpec, llmKey);
       }
-      if (selection !== '' && !validNumbers.has(selection)) {
-        console.log(`${YELLOW}その選択肢はありません (${[...validNumbers].join('/')} か空 Enter)${RESET}`);
+      if (selection === undefined) {
+        console.log(`${YELLOW}その選択肢はありません (${keys}${endHint})${RESET}`);
         continue; // メニューは開いたまま → 選び直し
       }
       console.log(`${DIM}> ${selection === '' ? '(会話を終える)' : selection}${RESET}`);
@@ -234,6 +240,7 @@ async function main(): Promise<void> {
         break;
       }
       menuOut = out;
+      menuSpec = detectMenu(out.body);
     }
     if (turn.error !== undefined) {
       const isJa = /[^\x00-\x7f]/.test(turn.error);

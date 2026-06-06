@@ -153,6 +153,21 @@ describe('Session 自己修正ループ', () => {
     expect(retranslateCalls.length).toBe(2);
   });
 
+  it('文字選択メニュー (turn として届く) でも残りコマンドを破棄して上位層に委ねる', async () => {
+    const LETTERED_MENU =
+      'Ask the old man about:\n  A. Himself\n  B. The guard\n  C. End conversation';
+    const engine = new FakeEngine((cmd) =>
+      cmd === 'talk to man' ? out(LETTERED_MENU, 'turn') : out('fine'),
+    );
+    const { entry } = fakeEntry(['talk to man', 'north']);
+    const session = new Session(engine, entry, OPTS);
+    const turn = await session.handleUserInput('老人と話してから北へ');
+    expect(turn.results).toHaveLength(1);
+    expect(turn.results[0]!.output.body).toContain('A. Himself');
+    expect(engine.sent).toEqual(['talk to man']); // north はメニューに吸われない
+    expect(turn.aborted).toBe(true);
+  });
+
   it('会話メニューは自動消化せず query としてユーザーに返す (対話プレイ)', async () => {
     const engine = new FakeEngine((cmd) =>
       cmd === 'talk to rosie' ? out(MENU, 'query') : out('fine'),

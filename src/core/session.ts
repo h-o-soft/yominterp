@@ -14,10 +14,13 @@
  * このファイルは環境非依存 (Node API import 禁止)。
  */
 import type { EngineOutput, ZEngine } from './engine.js';
+import { TALK_MENU_RE, detectMenu } from './menu.js';
 import type { EventLogger } from './ports.js';
 import { NULL_LOGGER } from './ports.js';
 import { classifyParserResponse } from './selfcorrect.js';
 import type { EntryTranslator, TurnContext } from './translate/entry.js';
+
+export { TALK_MENU_RE } from './menu.js';
 
 export interface SessionOptions {
   maxRetriesPerCommand: number;
@@ -55,10 +58,6 @@ export interface TurnResult {
   /** この入力で消費した入口 LLM 呼び出し数 (概算) */
   llmCalls: number;
 }
-
-/** 会話トピックメニュー (PunyInform talk menu) の検出。実機採取:
- *  "Talk to Rosie about:\n  1: ...\n\n[ENTER] End conversation\n\n----..." */
-export const TALK_MENU_RE = /\[ENTER\] End conversation/;
 
 /** 自動応答してはいけない「真の質問」(yes-no・ストーリー上の選択) の末尾パターン */
 export const REAL_QUESTION_RE = /(\?|yes or no[.:\]]*)\s*$/i;
@@ -133,7 +132,7 @@ export async function sendResolvingPauses(
     engine,
     command,
     (body) => {
-      if (TALK_MENU_RE.test(body)) return undefined;
+      if (detectMenu(body) !== undefined) return undefined; // メニューはユーザーが選ぶ
       if (!REAL_QUESTION_RE.test(body.trimEnd())) return ''; // keypress 待ち pause
       return undefined;
     },
@@ -215,6 +214,12 @@ export class Session {
           results.push({ command: cmd, output: out, corrected: retries > 0, retries });
           this.appendPartial(partial, cmd, out.body);
           confirmed = true;
+          // 文字選択型メニュー (darkpit 等) は通常の `>` プロンプト = turn として
+          // 届く。メニューが開いたら残りコマンドは破棄し、選択は上位層 (CLI) に委ねる
+          if (!this.opts.autoExhaustMenus && detectMenu(out.body) !== undefined) {
+            if (queue.length > 0) aborted = true;
+            queue.length = 0;
+          }
           break;
         }
 

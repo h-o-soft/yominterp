@@ -162,10 +162,16 @@ describe('EntryTranslator', () => {
     expect(await tr.selectMenuOption('雪嵐の話', 'menu')).toBe('3');
   });
 
-  it('selectMenuOption: END (会話終了) は空文字 = ENTER を返す', async () => {
+  it('selectMenuOption: END (会話終了) は空文字を返す', async () => {
     const { tr } = makeTranslator(['END']);
     await tr.init(VOCAB);
     expect(await tr.selectMenuOption('もう行くよ', 'menu')).toBe('');
+  });
+
+  it('selectMenuOption: 文字キー (A/B/C) も変換できる (小文字応答は大文字化)', async () => {
+    const { tr } = makeTranslator(['b']);
+    await tr.init(VOCAB);
+    expect(await tr.selectMenuOption('衛兵について聞く', 'A. Himself\nB. The guard')).toBe('B');
   });
 
   it('retranslate: 失敗コマンドとエラーを渡して言い直させる', async () => {

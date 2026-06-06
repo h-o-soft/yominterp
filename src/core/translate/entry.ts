@@ -51,9 +51,9 @@ const ALWAYS_OK = new Set([
   'save', 'restore', 'score', 'undo', 'quit', 'restart', 'verbose', 'brief',
 ]);
 
-/** v5 辞書の語長 (9 文字) に切り詰める */
-export function truncateForDict(word: string): string {
-  return word.slice(0, 9);
+/** 辞書の語長に切り詰める (v3: 6 文字 / v4+: 9 文字。実辞書から自動判定) */
+export function truncateForDict(word: string, dictWordLen = 9): string {
+  return word.slice(0, dictWordLen);
 }
 
 /** Inform コンパイラ内部オブジェクト等、プロンプトに不要な名前 */
@@ -73,7 +73,11 @@ export function usefulObjectNames(names: string[]): string[] {
  * - `take lamp. go north` のような 1 行複数コマンドはピリオドで分割
  * - 先頭語が辞書 (9 文字切り詰め) にも ALWAYS_OK にもない行は捨てる
  */
-export function parseCommands(text: string, dictSet: ReadonlySet<string>): string[] {
+export function parseCommands(
+  text: string,
+  dictSet: ReadonlySet<string>,
+  dictWordLen = 9,
+): string[] {
   const out: string[] = [];
   for (let line of text.split('\n')) {
     line = line.trim();
@@ -92,7 +96,7 @@ export function parseCommands(text: string, dictSet: ReadonlySet<string>): strin
       if (!/^[a-z]/.test(seg)) continue;
       if (seg.length > 80) continue;
       const first = seg.split(' ', 1)[0]!;
-      if (!ALWAYS_OK.has(first) && !dictSet.has(truncateForDict(first))) continue;
+      if (!ALWAYS_OK.has(first) && !dictSet.has(truncateForDict(first, dictWordLen))) continue;
       out.push(seg);
     }
   }
@@ -108,6 +112,8 @@ export class EntryTranslator {
   private systemPrompt = '';
   private fewshot: FewShotExample[] = [];
   private dictSet: Set<string> = new Set();
+  /** 辞書の切り詰め語長 (実辞書の最大語長から判定: v3=6, v4+=9) */
+  private dictWordLen = 9;
   private readonly logger: EventLogger;
 
   constructor(
@@ -121,9 +127,11 @@ export class EntryTranslator {
   async init(vocab: GameVocabulary): Promise<void> {
     const template = await this.prompts.load('entry.system.md');
     const objects = usefulObjectNames(vocab.objectNames);
+    this.dictWordLen = Math.max(6, ...vocab.dictWords.map((w) => w.length));
     this.systemPrompt = template
       .replace('{{DICT_WORDS}}', vocab.dictWords.join(' '))
-      .replace('{{OBJECT_NAMES}}', objects.join(', '));
+      .replace('{{OBJECT_NAMES}}', objects.join(', '))
+      .replaceAll('{{DICT_WORD_LEN}}', String(this.dictWordLen));
     this.dictSet = new Set(vocab.dictWords.map((w) => w.toLowerCase()));
     try {
       this.fewshot = JSON.parse(await this.prompts.load('fewshot.entry.json')) as FewShotExample[];
@@ -136,7 +144,7 @@ export class EntryTranslator {
   async translate(jaInput: string, recent: TurnContext[]): Promise<string[]> {
     const messages = this.buildMessages(jaInput, recent);
     const first = await this.chatEntry(messages);
-    let commands = parseCommands(first, this.dictSet);
+    let commands = parseCommands(first, this.dictSet, this.dictWordLen);
     if (commands.length === 0) {
       const retryMessages: ChatMessage[] = [
         ...messages,
@@ -146,7 +154,7 @@ export class EntryTranslator {
           content: 'コマンド行のみを出力し直せ。説明は不要。1 行 1 コマンド。',
         },
       ];
-      commands = parseCommands(await this.chatEntry(retryMessages), this.dictSet);
+      commands = parseCommands(await this.chatEntry(retryMessages), this.dictSet, this.dictWordLen);
     }
     this.logger.log({ event: 'entry.translate', jaInput, commands });
     return commands;
@@ -169,23 +177,23 @@ export class EntryTranslator {
           '同じ意図を表す別のコマンドを出力し直せ。1 行 1 コマンド。説明は不要。',
       },
     ];
-    const commands = parseCommands(await this.chatEntry(messages), this.dictSet);
+    const commands = parseCommands(await this.chatEntry(messages), this.dictSet, this.dictWordLen);
     this.logger.log({ event: 'entry.retranslate', failed: req.failedCommand, commands });
     return commands;
   }
 
   /**
-   * 会話メニュー (番号選択) に対する日本語指示を選択肢の番号へ変換する。
-   * 会話を終える意図なら '' (= ENTER) を返す。
+   * 会話メニュー (番号/文字選択) に対する日本語指示を選択肢のキーへ変換する。
+   * 会話を終える意図なら '' を返す (終了方法へのマッピングは呼び出し元)。
    */
   async selectMenuOption(jaInput: string, menuBody: string): Promise<string> {
     const messages: ChatMessage[] = [
       {
         role: 'system',
         content:
-          'あなたはゲームの会話メニューの選択器である。メニュー (番号付きの選択肢) と' +
-          'プレイヤーの日本語指示が与えられる。指示に最も合う選択肢の**番号だけ**を出力する。' +
-          '会話を終える・立ち去る意図なら END とだけ出力する。説明・記号・引用符は書かない。',
+          'あなたはゲームの会話メニューの選択器である。メニュー (番号または文字の選択肢) と' +
+          'プレイヤーの日本語指示が与えられる。指示に最も合う選択肢の**キーだけ** (例: 1, 2, A, B) を' +
+          '出力する。会話を終える・立ち去る意図なら END とだけ出力する。説明・記号・引用符は書かない。',
       },
       {
         role: 'user',
@@ -193,8 +201,12 @@ export class EntryTranslator {
       },
     ];
     const res = (await this.chatEntry(messages)).trim();
-    const num = /\b(\d{1,2})\b/.exec(res);
-    const selection = num !== null ? num[1]! : '';
+    let selection = '';
+    if (!/^end$/i.test(res) && !/\bEND\b/.test(res)) {
+      // 1〜2 桁の番号 or 単独の 1 文字 (A〜Z) を拾う
+      const m = /\b(\d{1,2})\b/.exec(res) ?? /\b([A-Za-z])\b/.exec(res);
+      if (m) selection = m[1]!.toUpperCase();
+    }
     this.logger.log({ event: 'entry.selectMenu', jaInput, response: res, selection });
     return selection;
   }
