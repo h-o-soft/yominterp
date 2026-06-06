@@ -18,7 +18,12 @@
   {
     "context": "Are you sure you want to quit?",
     "ja": "はい",
-    "commands": ["y"]
+    "commands": ["yes"]
+  },
+  {
+    "context": "[Do you want to drink the potion? Please answer YES or NO.]",
+    "ja": "いいえ、やめておく",
+    "commands": ["no"]
   },
   { "ja": "ドアをノックしてから中に入る", "commands": ["knock on door", "in"] }
 ]

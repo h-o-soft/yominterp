@@ -30,12 +30,32 @@ describe('parseTranscript', () => {
     expect(steps[1]!.expectedOutput).toBe('Taken.\nOpened.');
   });
 
+  it('YES/NO 質問へのインライン回答 (`>` なし) を独立 step として抽出する', () => {
+    const text = [
+      '>sw',
+      'A long cutscene.',
+      '[You have a choice. Please answer YES or NO.]',
+      'no',
+      'You: Thank you.',
+      'More story.',
+      '',
+      '>turn on torch',
+      'You switch it on.',
+    ].join('\n');
+    const steps = parseTranscript(text);
+    expect(steps.map((s) => s.command)).toEqual(['sw', 'no', 'turn on torch']);
+    expect(steps[0]!.expectedOutput).toContain('Please answer YES or NO');
+    expect(steps[1]!.expectedOutput).toContain('More story.');
+  });
+
   const TRANSCRIPT = 'refs/ghosts_R14/game.transcript';
-  it.skipIf(!existsSync(TRANSCRIPT))('実 transcript は 185 step', () => {
+  it.skipIf(!existsSync(TRANSCRIPT))('実 transcript は 185 コマンド + インライン回答 2 = 187 step', () => {
     const steps = parseTranscript(readFileSync(TRANSCRIPT, 'utf8'));
-    expect(steps).toHaveLength(185);
+    expect(steps).toHaveLength(187);
     expect(steps[0]!.command).toBe('look');
     expect(steps.some((s) => s.command === 'take pouch then open it')).toBe(true);
+    expect(steps.filter((s) => s.command === 'no')).toHaveLength(1);
+    expect(steps.filter((s) => s.command === 'yes')).toHaveLength(1);
   });
 });
 

@@ -49,6 +49,52 @@ export interface TurnResult {
   llmCalls: number;
 }
 
+/** 会話トピックメニュー (PunyInform talk menu) の検出。実機採取:
+ *  "Talk to Rosie about:\n  1: ...\n\n[ENTER] End conversation\n\n----..." */
+export const TALK_MENU_RE = /\[ENTER\] End conversation/;
+
+/** 自動応答してはいけない「真の質問」(yes-no・ストーリー上の選択) の末尾パターン */
+export const REAL_QUESTION_RE = /(\?|yes or no[.:\]]*)\s*$/i;
+
+/**
+ * コマンドを送り、自動応答できる中間入力待ちを解決しながら出力を読み切る:
+ *   - 会話メニュー ("[ENTER] End conversation") → 「1」を選び続けて全トピック消化
+ *     (ghosts.z5 の transcript は全トピック消化の会話全文を 1 step として記録)
+ *   - keypress 待ちの pause/カットシーン画面 (末尾が `?` でない query) → 空行で続行
+ *   - `?` で終わる query (yes-no 等の真の質問) は自動応答せず呼び出し元へ返す
+ * 出力は連結した 1 つの EngineOutput として返す。
+ */
+export async function sendExhaustingMenus(
+  engine: ZEngine,
+  command: string,
+  maxAutoReplies = 30,
+): Promise<EngineOutput> {
+  let out = await engine.send(command);
+  let merged = out;
+  let n = 0;
+  while (out.kind === 'query' && n < maxAutoReplies) {
+    let reply: string;
+    if (TALK_MENU_RE.test(out.body)) {
+      reply = '1';
+    } else if (!REAL_QUESTION_RE.test(out.body.trimEnd())) {
+      reply = ''; // keypress 待ち pause
+    } else {
+      break; // 真の質問 (yes-no・ストーリー選択) はユーザー/上位層に委ねる
+    }
+    n++;
+    out = await engine.send(reply);
+    const next: EngineOutput = {
+      raw: merged.raw + out.raw,
+      body: merged.body + '\n\n' + out.body,
+      kind: out.kind,
+    };
+    const status = out.statusLine ?? merged.statusLine;
+    if (status !== undefined) next.statusLine = status;
+    merged = next;
+  }
+  return merged;
+}
+
 export class Session {
   /** 確定済みターンの履歴 (入口プロンプトの文脈用) */
   readonly history: TurnContext[] = [];
@@ -98,7 +144,7 @@ export class Session {
       let confirmed = false;
 
       for (;;) {
-        const out = await this.engine.send(cmd);
+        const out = await sendExhaustingMenus(this.engine, cmd);
         if (out.kind === 'gameover') {
           results.push({ command: cmd, output: out, corrected: retries > 0, retries });
           this.appendPartial(partial, cmd, out.body);

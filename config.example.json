@@ -16,7 +16,7 @@
     "workDir": "/tmp/zllm",
     "width": 100,
     "quiescenceMs": 60,
-    "queryTimeoutMs": 2000,
+    "queryTimeoutMs": 800,
     "hardTimeoutMs": 10000
   },
   "selfCorrect": {

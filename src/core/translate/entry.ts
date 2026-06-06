@@ -85,6 +85,10 @@ export function parseCommands(text: string, dictSet: ReadonlySet<string>): strin
     for (let seg of line.split(/\.\s+|\.$|;\s*/)) {
       seg = seg.trim().toLowerCase().replace(/\s+/g, ' ');
       if (seg === '') continue;
+      if (/^\d+$/.test(seg)) {
+        out.push(seg); // メニュー選択の番号
+        continue;
+      }
       if (!/^[a-z]/.test(seg)) continue;
       if (seg.length > 80) continue;
       const first = seg.split(' ', 1)[0]!;

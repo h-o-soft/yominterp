@@ -17,7 +17,7 @@
   knock, lock, unlock, turn on, turn off, talk to <人>, ask <人> about <話題>,
   show <物> to <人>, give <物> to <人>, call <人>, dig <場所> with <道具>, say <語>
 - 「〜を調べる」「〜を見る」→ examine (x)。「周りを見る」「あたりを見回す」→ look。
-- yes/no の質問への返答は y または n の 1 語。
+- yes/no の質問・選択への返答は yes または no の 1 語。
 - メタ操作: セーブ=save / ロード=restore / スコア=score / 取り消し=undo / 終了=quit
 
 # 語彙の制約

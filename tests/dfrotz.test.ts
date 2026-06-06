@@ -133,13 +133,23 @@ describe('DfrotzEngine (モック stdout)', () => {
     await expect(engine.send('look')).rejects.toThrow(/not running/);
   });
 
-  it('timeout: 既知パターン外の長時間無音は EngineTimeoutError', async () => {
+  it('query: `>` なしで出力が止まれば既知パターン外でも query (会話メニュー等)', async () => {
+    const { engine, child } = makeEngine();
+    const ps = engine.start();
+    child.emitOut('Intro.\n\n>');
+    await ps;
+    const p = engine.send('talk to rosie');
+    child.emitOut('Talk to Rosie about:\n  1: Preparations\n\n[ENTER] End conversation\n\nYou: "Hey."');
+    const out = await p;
+    expect(out.kind).toBe('query');
+  });
+
+  it('timeout: 出力ゼロのままの長時間無音は EngineTimeoutError', async () => {
     const { engine, child } = makeEngine();
     const ps = engine.start();
     child.emitOut('Intro.\n\n>');
     await ps;
     const p = engine.send('wait');
-    child.emitOut('Strange output with no prompt and no question');
     await expect(p).rejects.toThrow(EngineTimeoutError);
   });
 

@@ -37,19 +37,7 @@ export interface DfrotzOptions {
   queryTimeoutMs: number;
   /** 1 コマンドのハードタイムアウト (ms) */
   hardTimeoutMs: number;
-  /** query とみなす既知パターン (設定で拡張可能) */
-  queryPatterns?: RegExp[] | undefined;
 }
-
-/** `>` で終わらない入力待ちの既知パターン (実機採取で確定・設定で拡張) */
-export const DEFAULT_QUERY_RES: RegExp[] = [
-  /\? *$/, // "Are you sure you want to quit?" 等の yes-no
-  /Please enter a filename/i,
-  /press (any key|SPACE|RETURN|ENTER)/i,
-  // ghosts.z5 冒頭の引用画面のような keypress 待ち pause:
-  // 出力が空行で終わったまま `>` が来ない (実機採取 2026-06-06)
-  /\n\n$/,
-];
 
 /** 子プロセスの差し替え点 (ユニットテストでフェイクを注入) */
 export interface ChildLike {
@@ -100,14 +88,11 @@ export class DfrotzEngine implements ZEngine {
   private queryTimer: NodeJS.Timeout | undefined;
   private hardTimer: NodeJS.Timeout | undefined;
   private exited = false;
-  private readonly queryRes: RegExp[];
 
   constructor(
     private readonly opts: DfrotzOptions,
     private readonly spawnFn: SpawnFn = defaultSpawn,
-  ) {
-    this.queryRes = opts.queryPatterns ?? DEFAULT_QUERY_RES;
-  }
+  ) {}
 
   get alive(): boolean {
     return this.child !== undefined && !this.exited;
@@ -198,17 +183,16 @@ export class DfrotzEngine implements ZEngine {
       return;
     }
     if (this.buffer.length === 0) return; // まだ何も来ていない (hard timeout 任せ)
-    // `>` で終わらない入力待ちの可能性 → queryTimeoutMs まで追加待機して再判定
+    // `>` で終わらない入力待ち → queryTimeoutMs まで追加待機して query 確定。
+    // dumb モードでは行入力時のみ `>` が出るため「出力があるのに `>` で
+    // 終わらず無音」= char 入力待ち (keypress 画面・会話メニュー等) とみなせる
+    // (実機採取: メニュー選択後は末尾が会話文になりパターン照合は不可能)。
+    // 真のハングは出力ゼロのまま hard timeout になるので混同しない。
     const extra = Math.max(0, this.opts.queryTimeoutMs - this.opts.quiescenceMs);
     this.queryTimer = setTimeout(() => {
       if (!this.pending) return;
       const tail = this.buffer.replace(/[ \t]+$/, '');
-      if (this.endsWithPrompt(tail)) {
-        this.settleResolve('turn');
-      } else if (this.queryRes.some((re) => re.test(tail.slice(-200)))) {
-        this.settleResolve('query');
-      }
-      // 既知パターン外の無音は hard timeout で Timeout として報告 (query と混同しない)
+      this.settleResolve(this.endsWithPrompt(tail) ? 'turn' : 'query');
     }, extra);
   }
 

@@ -17,7 +17,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import type { OutputKind } from '../core/engine.js';
 import { parseStatusLine } from '../core/engine.js';
 import { LLMClient } from '../core/llm/client.js';
-import { Session, type TurnResult } from '../core/session.js';
+import { Session, type TurnResult, sendExhaustingMenus } from '../core/session.js';
 import { EntryTranslator, type TurnContext } from '../core/translate/entry.js';
 import { ExitTranslator, fnv1a } from '../core/translate/exit.js';
 import { normalizeForCompare, tokenOverlap } from './compare.js';
@@ -73,7 +73,8 @@ async function captureGolden(
   const { engine, introBody } = await startEngine(cfg);
   const golden: GoldenStep[] = [];
   for (const step of steps) {
-    const out = await engine.send(step.command);
+    // 会話メニューは「1」で全トピック読み切り (LLM 側 Session と同じ集約)
+    const out = await sendExhaustingMenus(engine, step.command);
     const { room, score } = roomScore(out.statusLine, out.body);
     golden.push({ command: step.command, body: out.body, room, kind: out.kind, score });
     if (out.kind === 'gameover') break;
@@ -156,7 +157,7 @@ async function verifyRun(
       await engine.stop();
       ({ engine } = await startEngine(cfg));
       for (let k = 0; k < i; k++) {
-        await engine.send(golden[k]!.command);
+        await sendExhaustingMenus(engine, golden[k]!.command);
       }
       session = new Session(engine, entry, sessionOpts, logger);
       if (i === 0) session.pushGameOutput(introBody);
