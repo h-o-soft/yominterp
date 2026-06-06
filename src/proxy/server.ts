@@ -57,6 +57,9 @@ export async function startProxy(opts: ProxyOptions): Promise<ProxyHandle> {
         cors['Access-Control-Allow-Origin'] = origin;
         cors['Access-Control-Allow-Headers'] = 'authorization, content-type';
         cors['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
+        // Chrome の Private/Local Network Access: 公開 https サイト → loopback の
+        // preflight には PNA 許可ヘッダが必要 (実測: 無いと Permission denied)
+        cors['Access-Control-Allow-Private-Network'] = 'true';
         cors.Vary = 'Origin';
       }
       if (origin !== undefined && !originAllowed(origin, allow)) {

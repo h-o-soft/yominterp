@@ -75,6 +75,19 @@ export class FetchTransport implements LLMTransport {
     return h;
   }
 
+  /**
+   * https の公開サイトから http://127.0.0.1 (LM Studio / 中継 proxy) へ接続する
+   * ための fetch 追加オプション。Chrome の Local Network Access では
+   * targetAddressSpace の明示で mixed-content が許可される (初回はユーザーに
+   * 許可プロンプトが出る)。
+   */
+  private extraInit(): RequestInit {
+    if (/^http:\/\/(127\.0\.0\.1|localhost)([:/]|$)/.test(this.baseUrl)) {
+      return { targetAddressSpace: 'loopback' } as RequestInit;
+    }
+    return {};
+  }
+
   private async handle(res: Response): Promise<unknown> {
     if (!res.ok) {
       const text = (await res.text()).slice(0, 500);
@@ -95,6 +108,7 @@ export class FetchTransport implements LLMTransport {
   async post(path: string, body: unknown, timeoutMs: number): Promise<unknown> {
     try {
       const res = await fetch(this.baseUrl + path, {
+        ...this.extraInit(),
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify(body),
@@ -110,6 +124,7 @@ export class FetchTransport implements LLMTransport {
   async get(path: string, timeoutMs: number): Promise<unknown> {
     try {
       const res = await fetch(this.baseUrl + path, {
+        ...this.extraInit(),
         headers: this.headers(),
         signal: AbortSignal.timeout(timeoutMs),
       });
