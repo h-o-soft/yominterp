@@ -12,9 +12,10 @@
  * 5. レポート: 分類・リトライ・レイテンシ p50/p95・再現メタデータを JSON + MD で出力
  *
  *   npm run verify -- [--steps N] [--runs K] [--name suffix] [--exit-samples N]
+ *                     [--engine dfrotz|emglken]
  */
 import { existsSync, readFileSync } from 'node:fs';
-import type { OutputKind } from '../core/engine.js';
+import type { OutputKind, ZEngine } from '../core/engine.js';
 import { parseStatusLine } from '../core/engine.js';
 import { LLMClient } from '../core/llm/client.js';
 import { Session, type TurnResult, sendExhaustingMenus } from '../core/session.js';
@@ -26,6 +27,8 @@ import { objectNames } from '../core/zfile/objects.js';
 import { FetchTransport, FileCacheStore, FilePromptProvider, JsonlLogger } from '../cli/adapters.js';
 import { type AppConfig, loadConfig, toLLMConfig } from '../cli/config.js';
 import { DfrotzEngine } from '../cli/dfrotz.js';
+import { AutoDialogPort, MemorySaveStore } from '../web/engine/dialog.js';
+import { EmglkenEngine } from '../web/engine/emglken.js';
 import {
   type RunReport,
   type StepClass,
@@ -51,8 +54,26 @@ interface GoldenStep {
 
 // ---- エンジン制御 ----
 
-async function startEngine(cfg: AppConfig): Promise<{ engine: DfrotzEngine; introBody: string }> {
-  const engine = new DfrotzEngine(cfg.engine);
+export type EngineKind = 'dfrotz' | 'emglken';
+
+function makeEngine(cfg: AppConfig, kind: EngineKind): ZEngine {
+  if (kind === 'emglken') {
+    return new EmglkenEngine({
+      vm: 'bocfel',
+      storyName: cfg.engine.storyFile.split('/').pop() ?? 'story.z5',
+      storyData: new Uint8Array(readFileSync(cfg.engine.storyFile)),
+      dialogPort: new AutoDialogPort('verify'),
+      saveStore: new MemorySaveStore(),
+    });
+  }
+  return new DfrotzEngine(cfg.engine);
+}
+
+async function startEngine(
+  cfg: AppConfig,
+  kind: EngineKind,
+): Promise<{ engine: ZEngine; introBody: string }> {
+  const engine = makeEngine(cfg, kind);
   let out = await engine.start();
   while (out.kind === 'query') out = await engine.send(''); // 冒頭の keypress 待ち
   return { engine, introBody: out.body };
@@ -69,8 +90,9 @@ function roomScore(statusLine: string | undefined, body: string): { room: string
 async function captureGolden(
   cfg: AppConfig,
   steps: TranscriptStep[],
+  engineKind: EngineKind,
 ): Promise<{ golden: GoldenStep[]; introBody: string }> {
-  const { engine, introBody } = await startEngine(cfg);
+  const { engine, introBody } = await startEngine(cfg, engineKind);
   const golden: GoldenStep[] = [];
   for (const step of steps) {
     // 会話メニューは「1」で全トピック読み切り (LLM 側 Session と同じ集約)
@@ -89,6 +111,7 @@ interface VerifyDeps {
   cfg: AppConfig;
   entry: EntryTranslator;
   logger: JsonlLogger;
+  engineKind: EngineKind;
 }
 
 function goldenContexts(golden: GoldenStep[], upto: number, turns: number): TurnContext[] {
@@ -132,7 +155,7 @@ async function verifyRun(
   jaCommands: JaCommand[],
   introBody: string,
 ): Promise<{ records: StepRecord[]; finalScore: number | null; durationMs: number }> {
-  const { cfg, entry, logger } = deps;
+  const { cfg, entry, logger, engineKind } = deps;
   const t0 = Date.now();
   const records: StepRecord[] = [];
   let finalScore: number | null = null;
@@ -144,7 +167,7 @@ async function verifyRun(
     autoExhaustMenus: true, // ゴールデン側 (sendExhaustingMenus) と集約単位を揃える
   };
 
-  let { engine } = await startEngine(cfg);
+  let { engine } = await startEngine(cfg, engineKind);
   let session = new Session(engine, entry, sessionOpts, logger);
   session.pushGameOutput(introBody);
   let needResync = false;
@@ -156,7 +179,7 @@ async function verifyRun(
     if (needResync) {
       // リシンク: エンジン再起動 → ゴールデン英コマンド列を step i-1 まで再生
       await engine.stop();
-      ({ engine } = await startEngine(cfg));
+      ({ engine } = await startEngine(cfg, engineKind));
       for (let k = 0; k < i; k++) {
         await sendExhaustingMenus(engine, golden[k]!.command);
       }
@@ -254,6 +277,10 @@ async function main(): Promise<void> {
   const runs = Number(arg('--runs') ?? '1');
   const name = arg('--name') ?? cfg.llm.model.replace(/[^\w.-]/g, '_');
   const exitSamples = Number(arg('--exit-samples') ?? '0');
+  const engineKind = (arg('--engine') ?? 'dfrotz') as EngineKind;
+  if (engineKind !== 'dfrotz' && engineKind !== 'emglken') {
+    throw new Error(`--engine は dfrotz|emglken (指定: ${engineKind})`);
+  }
 
   const logger = new JsonlLogger(
     `${cfg.logDir}/verify-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`,
@@ -277,8 +304,8 @@ async function main(): Promise<void> {
     return ja;
   });
 
-  console.log(`ゴールデン採取中 (${steps.length} steps, seed=${cfg.engine.seed})...`);
-  const { golden, introBody } = await captureGolden(cfg, steps);
+  console.log(`ゴールデン採取中 (${steps.length} steps, engine=${engineKind})...`);
+  const { golden, introBody } = await captureGolden(cfg, steps, engineKind);
   console.log(`ゴールデン採取完了: ${golden.length} steps`);
 
   const promptHashes: Record<string, string> = {
@@ -291,7 +318,7 @@ async function main(): Promise<void> {
   for (let run = 1; run <= runs; run++) {
     console.log(`\n=== 本検証 run ${run}/${runs} (model: ${cfg.llm.model}) ===`);
     const startedAt = new Date().toISOString();
-    const { records, finalScore, durationMs } = await verifyRun({ cfg, entry, logger }, golden, jaCommands, introBody);
+    const { records, finalScore, durationMs } = await verifyRun({ cfg, entry, logger, engineKind }, golden, jaCommands, introBody);
     const report: RunReport = {
       meta: {
         startedAt,

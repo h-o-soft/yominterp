@@ -162,6 +162,8 @@ export function filterUnintendedMetas(
 
 export interface EntryTranslatorOptions {
   contextTurns: number;
+  /** 直近文脈の文字数上限 (長文ゲームでのプロンプト肥大対策)。既定 4096 */
+  contextChars?: number;
   logger?: EventLogger;
 }
 
@@ -331,6 +333,12 @@ export class EntryTranslator {
       for (const c of t.commands) parts.push(`> ${c}`);
       if (t.gameOutput.trim() !== '') parts.push(t.gameOutput.trim());
     }
-    return parts.join('\n');
+    let text = parts.join('\n');
+    // 長文ゲーム対策: 文字数上限を超えたら古い側 (先頭) から切り詰める
+    const cap = this.opts.contextChars ?? 4096;
+    if (text.length > cap) {
+      text = '…' + text.slice(text.length - cap);
+    }
+    return text;
   }
 }

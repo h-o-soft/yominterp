@@ -172,6 +172,27 @@ describe('EntryTranslator', () => {
     expect(messages[5]!.content).toContain('ランプを取って');
   });
 
+  it('直近文脈は contextChars を超えると古い側から切り詰める', async () => {
+    const calls: unknown[][] = [];
+    const transport: LLMTransport = {
+      post: async (_p, body) => {
+        calls.push((body as { messages: unknown[] }).messages);
+        return { choices: [{ message: { content: 'look' } }] };
+      },
+      get: async () => ({}),
+    };
+    const llm = new LLMClient(transport, { model: 'm', temperature: 0, maxTokens: 10, timeoutMs: 1000 });
+    const tr = new EntryTranslator(llm, FAKE_PROMPTS, { contextTurns: 2, contextChars: 100 });
+    await tr.init(VOCAB);
+    const longOutput = 'OLD '.repeat(100) + 'TAIL_MARKER';
+    await tr.translate('見る', [{ gameOutput: longOutput, commands: ['wait'] }]);
+    const messages = calls[0] as { content: string }[];
+    const user = messages[messages.length - 1]!.content;
+    expect(user).toContain('TAIL_MARKER');
+    expect(user).not.toContain('> wait'); // 先頭側が切られている
+    expect(user.length).toBeLessThan(300);
+  });
+
   it('直近文脈 (確定コマンド → ゲーム出力) を user メッセージに含める', async () => {
     const { tr, calls } = makeTranslator(['open box']);
     await tr.init(VOCAB);
