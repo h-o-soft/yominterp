@@ -13,7 +13,8 @@
     "gen-ja": "tsx src/verify/gen-ja-commands.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eval:paraphrase": "tsx src/verify/paraphrase-eval.ts"
   },
   "devDependencies": {
     "@types/node": "^20.19.0",
