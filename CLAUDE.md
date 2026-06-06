@@ -39,6 +39,24 @@ ZORK 等の古典 IF や現代 Inform 製 IF は Z-machine という仮想機械
 
 **重要(著作権)**: ghosts.z5 は商用作品。**ローカルでのテスト素材としてのみ使用**し、リポジトリへのコミットや配布はしない。製品化時のストーリーファイルは自作 / 許諾済み / フリーライセンス(IF Archive 等)のものを別途用意する。インタプリタ側もライセンス確認が必要(Frotz は GPL、Glulxe/Quixe は MIT 寄り 等)。
 
+## セットアップと使い方 (段階1 CLI)
+
+```bash
+brew install frotz        # dfrotz 同梱 (2.55 で確認。formula に dumb インタフェース入り)
+npm install
+cp config.example.json config.json   # 必要なら接続先/モデルを編集 (config.json は gitignore)
+
+npm test                  # vitest (refs/ や LM Studio が無いものはスキップ)
+npm run play              # 日本語で対話プレイ (/help でメタコマンド)
+npm run gen-ja            # fixtures/ja-commands.json を LLM 一括生成 (要 refs/)
+npm run verify -- --steps 20 --runs 1   # transcript 検証 (要 refs/ + fixtures)
+```
+
+- 接続先は OpenAI 互換 API (`config.json` の `llm.baseUrl`、既定 LM Studio `http://127.0.0.1:1234/v1`)。環境変数 `ZLLM_MODEL` / `ZLLM_BASE_URL` 等で上書き可。
+- `src/core/` は環境非依存 (Node API import 禁止 — tests/core-purity.test.ts で強制)。Node 依存は `src/cli/adapters.ts` 等に隔離し、段階2 でブラウザ/レンダラへ core を無変換移植する。
+- ゲーム本文・攻略由来の派生物 (fixtures/ logs/ .cache/ reports/) は gitignore。**コミット禁止**。
+- 実機挙動メモ: ghosts.z5 は冒頭に keypress 待ちの引用画面がある (DfrotzEngine は `query` として扱い、CLI/検証は空行を送って進める)。`-R` 制限モードでも save はファイル名プロンプトを出す。undo 対応。
+
 ## 設計プロセス
 
 - 詳細設計は `/design-plan <題目>` で `plan.md` に策定 → `/plan-review` で Codex CLI による反復レビュー(最大5ラウンド, VERDICT: APPROVED まで) → 完了した plan は `/plan-archive <slug>` で `plans/` へ。
