@@ -4,7 +4,7 @@
  */
 import { parseStatusLine } from '../core/engine.js';
 import { LLMClient } from '../core/llm/client.js';
-import { type MenuSpec, detectMenu, resolveMenuKey } from '../core/menu.js';
+import { type MenuSpec, detectMenu, resolveMenuKey, translateMenuLabels } from '../core/menu.js';
 import { REAL_QUESTION_RE, Session, sendResolvingPauses } from '../core/session.js';
 import { EntryTranslator } from '../core/translate/entry.js';
 import { ExitTranslator } from '../core/translate/exit.js';
@@ -67,6 +67,7 @@ let exitTr: ExitTranslator | undefined;
 let llm: LLMClient | undefined;
 let activeMenu: MenuSpec | undefined;
 let lastMenuBody = '';
+let lastMenuTranslated = '';
 let gameOver = false;
 
 function makeLLM(): LLMClient {
@@ -96,12 +97,13 @@ async function translateOut(body: string): Promise<string> {
   }
 }
 
-async function renderGameText(body: string, statusLineRaw?: string): Promise<void> {
+async function renderGameText(body: string, statusLineRaw?: string): Promise<string> {
   showStatus(statusLineRaw);
-  if (body.trim() === '') return;
+  if (body.trim() === '') return '';
   const ja = await translateOut(body);
   print('', ja);
   if (settings.showRaw && ja !== body) print('raw', body);
+  return ja;
 }
 
 // ---- メニュー UI ----
@@ -111,20 +113,25 @@ function clearChoices(): void {
   activeMenu = undefined;
 }
 
-function showMenuChoices(spec: MenuSpec, body: string): void {
+function showMenuChoices(spec: MenuSpec, body: string, translatedBody: string): void {
   activeMenu = spec;
   lastMenuBody = body;
+  lastMenuTranslated = translatedBody;
   choices.innerHTML = '';
-  for (const c of spec.choices) {
+  // ボタンのラベルは出口翻訳済み本文から対応付ける (CLI と同じ翻訳経路。
+  // 追加の LLM 呼び出しなし。見つからないキーは原文ラベルにフォールバック)
+  const labeled = translateMenuLabels(spec, translatedBody);
+  for (const c of labeled) {
     const b = document.createElement('button');
     b.textContent = `${c.key}: ${c.label}`;
     b.addEventListener('click', () => void submitMenuSelection(c.key));
     choices.appendChild(b);
   }
-  if (spec.enterEnds || spec.endKey !== undefined) {
+  // ENTER 終了形式のみ汎用ボタンを足す (文字式の endKey は選択肢として既に表示済み)
+  if (spec.enterEnds) {
     const b = document.createElement('button');
     b.textContent = '会話を終える';
-    b.addEventListener('click', () => void submitMenuSelection(spec.enterEnds ? '' : spec.endKey!));
+    b.addEventListener('click', () => void submitMenuSelection(''));
     choices.appendChild(b);
   }
   choices.hidden = false;
@@ -144,11 +151,14 @@ function showQuestionChoices(): void {
 
 // ---- ゲーム進行 ----
 
-async function afterOutput(out: { body: string; kind: string; statusLine?: string }): Promise<void> {
+async function afterOutput(
+  out: { body: string; kind: string; statusLine?: string },
+  translatedBody: string,
+): Promise<void> {
   // メニュー / 真の質問の検出と UI 提示
   const spec = detectMenu(out.body);
   if (spec !== undefined && out.kind !== 'gameover') {
-    showMenuChoices(spec, out.body);
+    showMenuChoices(spec, out.body, translatedBody);
     return;
   }
   clearChoices();
@@ -171,8 +181,8 @@ async function submitMenuSelection(key: string): Promise<void> {
     print('cmd', `> ${key === '' ? '(会話を終える)' : key}`);
     const out = await sendResolvingPauses(engine, key);
     session.pushGameOutput(out.body);
-    await renderGameText(out.body, out.statusLine);
-    await afterOutput(out);
+    const ja = await renderGameText(out.body, out.statusLine);
+    await afterOutput(out, ja);
   } catch (err) {
     print('system', `エラー: ${String(err)}`);
   } finally {
@@ -188,8 +198,8 @@ async function submitDirect(command: string): Promise<void> {
     print('cmd', `> ${command}`);
     const out = await sendResolvingPauses(engine, command);
     session.pushGameOutput(out.body);
-    await renderGameText(out.body, out.statusLine);
-    await afterOutput(out);
+    const ja = await renderGameText(out.body, out.statusLine);
+    await afterOutput(out, ja);
   } catch (err) {
     print('system', `エラー: ${String(err)}`);
   } finally {
@@ -227,7 +237,7 @@ async function handleUserInput(ja: string): Promise<void> {
       thinking.remove();
       if (selection === undefined) {
         print('system', `その選択肢はありません (${spec.choices.map((c) => c.key).join('/')})`);
-        showMenuChoices(spec, lastMenuBody);
+        showMenuChoices(spec, lastMenuBody, lastMenuTranslated);
         return;
       }
       await submitMenuSelection(selection);
@@ -236,9 +246,10 @@ async function handleUserInput(ja: string): Promise<void> {
 
     const turn = await session.handleUserInput(ja);
     thinking.remove();
+    let lastJa = '';
     for (const r of turn.results) {
       print('cmd', `> ${r.command}${r.corrected ? ' (自己修正)' : ''}`);
-      await renderGameText(r.output.body, r.output.statusLine);
+      lastJa = await renderGameText(r.output.body, r.output.statusLine);
     }
     if (turn.error !== undefined) {
       const isJa = /[^\x00-\x7f]/.test(turn.error);
@@ -246,7 +257,7 @@ async function handleUserInput(ja: string): Promise<void> {
     }
     if (turn.aborted) print('cmd', '(途中で失敗したため残りの動作は中止しました)');
     const last = turn.results[turn.results.length - 1];
-    if (last !== undefined) await afterOutput(last.output);
+    if (last !== undefined) await afterOutput(last.output, lastJa);
     if (turn.gameOver) {
       gameOver = true;
       print('system', '―― ゲーム終了 ――');
@@ -321,8 +332,8 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       out = await engine.send('');
     }
     session.pushGameOutput(out.body);
-    await renderGameText(out.body, out.statusLine);
-    await afterOutput(out);
+    const introJa = await renderGameText(out.body, out.statusLine);
+    await afterOutput(out, introJa);
     print('system', '日本語で指示してください (例: 周りを見る)');
   } catch (err) {
     print('system', `起動エラー: ${String(err)}`);
