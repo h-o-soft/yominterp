@@ -1,5 +1,5 @@
 {
-  "name": "zmachine-llm",
+  "name": "yominterp",
   "version": "0.1.0",
   "private": true,
   "description": "Z-machine IF を LLM 翻訳層経由で日本語プレイ可能にする CLI 試作 (段階1)",
@@ -15,7 +15,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "eval:paraphrase": "tsx src/verify/paraphrase-eval.ts",
-    "proxy": "tsx scripts/zllm-proxy.mts",
+    "proxy": "tsx scripts/yominterp-proxy.mts",
     "build:web": "vite build",
     "e2e": "playwright test"
   },

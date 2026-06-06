@@ -32,9 +32,16 @@ export interface ProxyHandle {
 
 const LOCAL_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
+/** 公式配布先 (GitHub Pages) は既定で許可 */
+const DEFAULT_ALLOWED_ORIGINS = ['https://h-o-soft.github.io'];
+
 export function originAllowed(origin: string | undefined, extra: string[]): boolean {
   if (origin === undefined) return true; // ブラウザ以外 (curl 等)。token で保護される
-  return LOCAL_ORIGIN_RE.test(origin) || extra.includes(origin);
+  return (
+    LOCAL_ORIGIN_RE.test(origin) ||
+    DEFAULT_ALLOWED_ORIGINS.includes(origin) ||
+    extra.includes(origin)
+  );
 }
 
 export async function startProxy(opts: ProxyOptions): Promise<ProxyHandle> {

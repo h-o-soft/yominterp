@@ -16,8 +16,8 @@ export interface WebSettings {
   showRaw: boolean;
 }
 
-const LS_KEY = 'zllm-settings';
-const LS_API_KEY = 'zllm-apikey';
+const LS_KEY = 'yominterp-settings';
+const LS_API_KEY = 'yominterp-apikey';
 
 export const DEFAULT_SETTINGS: WebSettings = {
   baseUrl: 'http://127.0.0.1:1234/v1',

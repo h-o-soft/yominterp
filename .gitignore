@@ -9,8 +9,15 @@ refs/
 # Node
 node_modules/
 
+# ビルド成果物・テスト出力
+dist/
+test-results/
+playwright-report/
+
 # 設定 (接続先・APIキー等。config.example.json を git 管理)
 config.json
+config.*.json
+!config.example.json
 
 # ゲーム本文・攻略手順の派生物は必ずこの gitignore 対象ディレクトリに置くこと (誤コミット防止)
 # - fixtures/: transcript 由来の ja-commands / few-shot / ゴールデン

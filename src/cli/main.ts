@@ -2,7 +2,7 @@
  * 対話 CLI: 日本語で Z-machine IF をプレイする。
  *
  *   npm run play            # config.json (なければ config.example.json) を使用
- *   ZLLM_MODEL=... npm run play
+ *   YOMINTERP_MODEL=... npm run play
  *
  * メタコマンド: /quit /raw /undo /retry /score /save /help
  */

@@ -26,7 +26,7 @@ describe.skipIf(!available)('DfrotzEngine 結合 (ghosts.z5)', () => {
       dfrotzPath: 'dfrotz',
       storyFile: STORY,
       seed: 1234,
-      workDir: '/tmp/zllm-test',
+      workDir: '/tmp/yominterp-test',
       width: 100,
       quiescenceMs: 60,
       queryTimeoutMs: 2000,

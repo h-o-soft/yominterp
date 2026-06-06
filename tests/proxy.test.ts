@@ -27,7 +27,7 @@ afterAll(async () => {
   await new Promise<void>((r) => upstream.close(() => r()));
 });
 
-describe('zllm-proxy', () => {
+describe('yominterp-proxy', () => {
   it('正しいトークン: 上流へ中継し Authorization を素通しする', async () => {
     upstreamHits = [];
     const res = await fetch(proxy.baseUrlFor('/v1/models'), {
@@ -69,6 +69,7 @@ describe('zllm-proxy', () => {
     expect(originAllowed('http://localhost:9999', [])).toBe(true);
     expect(originAllowed('http://127.0.0.1:4173', [])).toBe(true);
     expect(originAllowed('https://foo.github.io', [])).toBe(false);
+    expect(originAllowed('https://h-o-soft.github.io', [])).toBe(true); // 公式 Pages は既定許可
     expect(originAllowed('https://foo.github.io', ['https://foo.github.io'])).toBe(true);
     expect(originAllowed(undefined, [])).toBe(true); // 非ブラウザは token で保護
   });

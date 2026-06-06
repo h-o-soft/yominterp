@@ -25,7 +25,7 @@ const handle = await startProxy({
   allowOrigins: origins,
 });
 
-console.log('zllm-proxy 起動 (Ctrl-C で終了)');
+console.log('yominterp-proxy 起動 (Ctrl-C で終了)');
 console.log(`  上流: ${target}`);
 console.log(`  アプリの設定 → Base URL に貼り付け: ${handle.baseUrlFor('/v1')}`);
 console.log('  (トークンは起動の度に変わります。許可 origin: localhost/127.0.0.1' + (origins.length ? ', ' + origins.join(', ') : '') + ')');

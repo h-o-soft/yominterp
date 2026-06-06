@@ -2,8 +2,8 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  // GitHub Pages (サブパス) でも動くよう相対パス
-  base: './',
+  // GitHub Pages のプロジェクトサイト (https://h-o-soft.github.io/yominterp/)
+  base: '/yominterp/',
   build: {
     outDir: 'dist',
     target: 'es2022',

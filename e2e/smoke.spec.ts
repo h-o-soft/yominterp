@@ -7,7 +7,7 @@ import { expect, test } from '@playwright/test';
 
 test('ページが起動し、未設定なら設定ダイアログが開く', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle(/zmachine-llm/);
+  await expect(page).toHaveTitle(/yominterp/);
   await expect(page.locator('#settings-dialog')).toHaveAttribute('open', '');
   await page.getByRole('button', { name: '閉じる' }).click();
   await expect(page.locator('#terminal')).toContainText('日本語で遊ぶ');
@@ -20,10 +20,10 @@ test('設定が localStorage に永続される (apiKey は既定で永続しな
   await page.locator('#set-apikey').fill('sk-secret');
   await page.getByRole('button', { name: '閉じる' }).click();
   await page.reload();
-  const stored = await page.evaluate(() => localStorage.getItem('zllm-settings') ?? '');
+  const stored = await page.evaluate(() => localStorage.getItem('yominterp-settings') ?? '');
   expect(stored).toContain('test-model');
   expect(stored).not.toContain('sk-secret');
-  expect(await page.evaluate(() => localStorage.getItem('zllm-apikey'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('yominterp-apikey'))).toBeNull();
 });
 
 test('サンプル (darkpit) が WASM で起動しイントロが表示される (LLM なし→原文フォールバック)', async ({

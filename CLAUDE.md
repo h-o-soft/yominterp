@@ -1,4 +1,4 @@
-# zmachine-llm
+# yominterp (旧称 zmachine-llm)
 
 Z-machine 製インタラクティブフィクション(IF)を、**LLM 翻訳層を挟むことで多言語(まず日本語)でプレイできる**ようにするプロジェクト。
 
@@ -52,7 +52,7 @@ npm run gen-ja            # fixtures/ja-commands.json を LLM 一括生成 (要 
 npm run verify -- --steps 20 --runs 1   # transcript 検証 (要 refs/ + fixtures)
 ```
 
-- 接続先は OpenAI 互換 API (`config.json` の `llm.baseUrl`、既定 LM Studio `http://127.0.0.1:1234/v1`)。環境変数 `ZLLM_MODEL` / `ZLLM_BASE_URL` 等で上書き可。
+- 接続先は OpenAI 互換 API (`config.json` の `llm.baseUrl`、既定 LM Studio `http://127.0.0.1:1234/v1`)。環境変数 `YOMINTERP_MODEL` / `YOMINTERP_BASE_URL` 等で上書き可。
 - `src/core/` は環境非依存 (Node API import 禁止 — tests/core-purity.test.ts で強制)。Node 依存は `src/cli/adapters.ts` 等に隔離し、段階2 でブラウザ/レンダラへ core を無変換移植する。
 - ゲーム本文・攻略由来の派生物 (fixtures/ logs/ .cache/ reports/) は gitignore。**コミット禁止**。
 - 実機挙動メモ: ghosts.z5 は冒頭に keypress 待ちの引用画面がある (DfrotzEngine は `query` として扱い、CLI/検証は空行を送って進める)。`-R` 制限モードでも save はファイル名プロンプトを出す。undo 対応。

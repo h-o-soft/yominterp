@@ -38,7 +38,7 @@ const TEST_OPTS: DfrotzOptions = {
   dfrotzPath: 'dfrotz',
   storyFile: 'dummy.z5',
   seed: 1,
-  workDir: '/tmp/zllm-test',
+  workDir: '/tmp/yominterp-test',
   width: 100,
   quiescenceMs: 20,
   queryTimeoutMs: 80,

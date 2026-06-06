@@ -467,7 +467,7 @@ function wireSettings(): void {
     const blob = new Blob([logger.toJsonl()], { type: 'application/jsonl' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'zllm-log.jsonl';
+    a.download = 'yominterp-log.jsonl';
     a.click();
     URL.revokeObjectURL(a.href);
   });
@@ -496,7 +496,7 @@ form.addEventListener('submit', (e) => {
 
 wireSettings();
 wireTopbar();
-print('system', 'zmachine-llm — 英語のインタラクティブフィクションを日本語で遊ぶ');
+print('system', 'yominterp — 英語のインタラクティブフィクションを日本語で遊ぶ');
 print('system', '右上の「設定」から LLM 接続先を設定し、ゲームを読み込んでください');
 if (settings.model === '') {
   ($<HTMLDialogElement>('settings-dialog')).showModal();
