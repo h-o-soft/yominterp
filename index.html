@@ -18,7 +18,10 @@
       <!-- 上部バーはゲームのステータスライン専用 (場所名 + 右寄せ情報を省略せず全幅で)。
            アプリ操作の☰メニューは下部 (入力バー) に置き、ステータスと衝突させない -->
       <header id="topbar">
-        <span id="status-line" title="ステータス行 (場所名・得点・手数 等)"></span>
+        <div id="status-line" title="ステータス行 (場所名・得点・手数 等)">
+          <span id="status-left"></span>
+          <span id="status-right"></span>
+        </div>
       </header>
       <nav id="topbar-menu" hidden aria-label="メニュー">
         <button id="btn-open-top">📂 開く…</button>

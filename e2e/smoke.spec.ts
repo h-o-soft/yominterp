@@ -37,6 +37,24 @@ test('ウェルカム画面・上部バーはステータス専用・☰メニ�
   await expect(page.locator('#terminal')).not.toContainText('proxy 設定は不要');
 });
 
+test('ステータスラインは左=場所名 / 右=右寄せ情報の 2 要素 (右寄せレイアウト)', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '閉じる' }).click();
+  // 左右 2 要素が存在し、flex で左右に振り分けられている
+  await expect(page.locator('#status-line #status-left')).toHaveCount(1);
+  await expect(page.locator('#status-line #status-right')).toHaveCount(1);
+  const display = await page
+    .locator('#status-line')
+    .evaluate((el) => getComputedStyle(el).display);
+  expect(display).toBe('flex');
+  const justify = await page
+    .locator('#status-line')
+    .evaluate((el) => getComputedStyle(el).justifyContent);
+  expect(justify).toBe('space-between');
+});
+
 test('設定が localStorage に永続される (apiKey は既定で永続しない)', async ({ page }) => {
   await page.goto('/');
   await page.locator('#set-baseurl').fill('http://127.0.0.1:9999/v1');

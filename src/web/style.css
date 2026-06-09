@@ -21,8 +21,13 @@ body {
   background: var(--status-bg); padding: 0.3rem 0.8rem; gap: 0.5rem;
   white-space: pre; overflow: hidden;
 }
-/* ステータスラインは上部バー全幅 (場所名 + 右寄せ情報を省略せず表示) */
-#status-line { color: var(--accent); flex: 1; white-space: pre; overflow-x: auto; }
+/* ステータスラインは上部バー全幅。左=場所名 / 右=得点/手数・日付等を右寄せ */
+#status-line {
+  color: var(--accent); flex: 1; display: flex; justify-content: space-between;
+  gap: 1.5rem; white-space: pre; overflow: hidden;
+}
+#status-left { overflow: hidden; text-overflow: ellipsis; }
+#status-right { flex-shrink: 0; }
 /* ☰ ハンバーガーは下部入力バーに置く (上部のステータスと衝突させない)。
    自前の不透明な地色で常に可読 */
 #btn-menu {

@@ -40,6 +40,7 @@ import {
   splitForPaging,
   styleToCss,
   styleTranslatedParagraphs,
+  wrapToLines,
 } from './ui/render.js';
 import type { EngineOutput, SpanStyle, StyledBlock, StyledLine } from '../core/engine.js';
 import { uniformStyle } from '../core/engine.js';
@@ -49,6 +50,8 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
 const terminal = $('#terminal'.slice(1));
 const statusLine = $('status-line');
+const statusLeft = $('status-left');
+const statusRight = $('status-right');
 const input = $<HTMLInputElement>('input');
 const sendButton = $<HTMLButtonElement>('btn-send');
 const choices = $('choices');
@@ -73,11 +76,12 @@ function printStyledPara(text: string, style: SpanStyle | undefined): void {
   }
 }
 
-/** quote box (grid ブロック) を装飾付きで出力する。中身は訳文テキスト */
+/** quote box (grid ブロック) を装飾付きで出力する。中身は訳文テキスト。
+ *  クラシックは pre 表示なので 80 桁で折り返してから入れる (横はみ出し防止) */
 function printGridBox(text: string, style: SpanStyle | undefined): void {
   const div = document.createElement('div');
   div.className = 'gridbox';
-  div.textContent = text;
+  div.textContent = settings.classicMode ? wrapToLines(text, CLASSIC_COLS).join('\n') : text;
   const css = styleToCss(style ?? { reverse: true });
   div.classList.add(...css.classes);
   if (css.inline !== '') div.setAttribute('style', css.inline);
@@ -231,22 +235,25 @@ function showStatus(line: string | undefined, style?: SpanStyle): void {
   if (line === lastStatusRaw) return;
   lastStatusRaw = line;
 
+  // 左=場所名 / 右=右寄せ情報 (得点・手数 / 日付等) を別要素に振り分けて右寄せ表示する
+  const setStatus = (left: string, right: string) => {
+    if (lastStatusRaw !== line) return;
+    statusLeft.textContent = left;
+    statusRight.textContent = right;
+  };
   const parsed = parseStatusGeneric(line);
   // まず英語/数値を即表示 (翻訳待ちでブロックしない)。裏で和訳して差し替える
   if ('room' in parsed) {
-    statusLine.textContent = `${parsed.room}  得点: ${parsed.score}  手数: ${parsed.moves}`;
-    void translateOut(parsed.room).then((ja) => {
-      if (lastStatusRaw === line) statusLine.textContent = `${ja}  得点: ${parsed.score}  手数: ${parsed.moves}`;
-    });
+    const right = `得点: ${parsed.score}　手数: ${parsed.moves}`;
+    setStatus(parsed.room, right);
+    void translateOut(parsed.room).then((ja) => setStatus(ja, right));
   } else {
-    statusLine.textContent = parsed.right !== undefined ? `${parsed.left}　${parsed.right}` : parsed.left;
+    setStatus(parsed.left, parsed.right ?? '');
     const right = parsed.right;
     void Promise.all([
       translateOut(parsed.left),
       right !== undefined ? translateOut(right) : Promise.resolve(''),
-    ]).then(([l, r]) => {
-      if (lastStatusRaw === line) statusLine.textContent = r !== '' ? `${l}　${r}` : l;
-    });
+    ]).then(([l, r]) => setStatus(l, r));
   }
 }
 
