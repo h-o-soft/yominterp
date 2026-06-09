@@ -127,23 +127,78 @@ export function gridPlainText(block: StyledBlock): string {
 }
 
 /**
- * クラシック端末モードのページ送り (Lv: [More] 相当)。
- * RemGlk/emglken はページャを持たない (全文を送るだけ) ため、フロント側で
- * 「1 画面 = PAGE_LINES 行」を数え、超える前にユーザーの続行操作を待つ。
+ * クラシック端末の寸法定義 (古典端末 80x24)。
+ * - 横 80 桁 (等幅・全角=2 桁)
+ * - 本文表示領域 24 行 (ステータスは上部バー、入力欄は下部 = 枠外)
  */
-export const PAGE_LINES = 20; // 24 行端末からステータス/入力行ぶんを引いた目安
+export const CLASSIC_COLS = 80;
+export const CLASSIC_ROWS = 24;
 
-/** 表示幅の概算 (CJK は 2 桁換算) で折返し込みの行数を見積もる */
-export function estimateLines(text: string, cols = 80): number {
-  let total = 0;
-  for (const line of text.split('\n')) {
-    let width = 0;
-    for (const ch of line) {
-      width += ch.codePointAt(0)! > 0xff ? 2 : 1;
+/** 1 文字の表示幅 (全角 CJK = 2、半角 = 1) */
+function charWidth(ch: string): number {
+  return ch.codePointAt(0)! > 0xff ? 2 : 1;
+}
+
+/**
+ * 1 論理行を cols 幅で折り返し、表示行の配列にする。
+ * 空白で区切れる箇所を優先して折り返し (英単語を途中で割らない)、
+ * 1 トークンが cols を超える場合のみ文字単位で割る (連続 CJK や長い URL 等)。
+ */
+export function wrapLine(line: string, cols: number): string[] {
+  if (line === '') return [''];
+  const out: string[] = [];
+  let cur = '';
+  let curW = 0;
+  const pushCur = () => {
+    out.push(cur.replace(/\s+$/, '')); // 行末にぶら下がる空白は表示上不要
+    cur = '';
+    curW = 0;
+  };
+  // 空白を保持しつつ「空白塊 / 非空白塊」でトークン化
+  const tokens = line.match(/\s+|\S+/g) ?? [];
+  for (const token of tokens) {
+    const isSpace = /^\s+$/.test(token);
+    let tokW = 0;
+    for (const ch of token) tokW += charWidth(ch);
+    if (curW + tokW <= cols) {
+      cur += token;
+      curW += tokW;
+      continue;
     }
-    total += Math.max(1, Math.ceil(width / cols));
+    // 行末にぶら下がる空白塊 (折返しで次行頭に来る) は捨てて改行する
+    if (isSpace) {
+      if (curW > 0) pushCur();
+      continue;
+    }
+    // 入りきらない: 行頭の空白でなければ改行してから配置を試みる
+    if (curW > 0 && !/^\s+$/.test(token)) pushCur();
+    if (tokW <= cols) {
+      // 改行後の行頭に置く (行頭の空白は捨てる)
+      if (/^\s+$/.test(token)) continue;
+      cur = token;
+      curW = tokW;
+    } else {
+      // トークン自体が cols 超 → 文字単位で割る
+      for (const ch of token) {
+        const w = charWidth(ch);
+        if (curW + w > cols && curW > 0) pushCur();
+        cur += ch;
+        curW += w;
+      }
+    }
   }
-  return total;
+  pushCur();
+  return out;
+}
+
+/** テキストを表示行 (\n + 折返し) に展開する */
+export function wrapToLines(text: string, cols: number): string[] {
+  return text.split('\n').flatMap((line) => wrapLine(line, cols));
+}
+
+/** 折返し込みの表示行数を数える (改行コードだけでなく wrap 分も +1 する) */
+export function estimateLines(text: string, cols = CLASSIC_COLS): number {
+  return wrapToLines(text, cols).length;
 }
 
 /** ページャ状態。waitFn (続行操作待ち) を注入してテスト可能にする */
@@ -151,7 +206,7 @@ export class Pager {
   private linesShown = 0;
   constructor(
     private readonly waitFn: () => Promise<void>,
-    private readonly pageLines: number | (() => number) = PAGE_LINES,
+    private readonly pageLines: number | (() => number) = CLASSIC_ROWS,
   ) {}
 
   private limit(): number {
@@ -163,7 +218,11 @@ export class Pager {
     this.linesShown = 0;
   }
 
-  /** ブロックを表示する直前に呼ぶ。必要なら続行操作を待つ */
+  /**
+   * ブロックを表示する直前に呼ぶ。
+   * 「このブロックを足すと表示領域を超える」手前で続行操作を待つ
+   * (先読み — あふれてから止めるのではなく、超える前に止める)。
+   */
   async beforeAppend(estimatedLines: number): Promise<void> {
     if (this.linesShown > 0 && this.linesShown + estimatedLines > this.limit()) {
       await this.waitFn();
@@ -174,23 +233,16 @@ export class Pager {
 }
 
 /**
- * 長い段落をページ境界で分割する (段落途中でも [More] で止めるため)。
- * 行は \n と概算折返し幅 (CJK=2 桁) で数える。
+ * テキストを「表示行 maxLines 行ごと」のチャンクに分割する (段落途中でも
+ * ページ境界で止めるため)。**折返し (wrap) 込みの表示行**で数えるので、
+ * 改行コードを含まない長い 1 段落も正しく分割される。
+ * 各チャンクは折返し済みテキスト (\n 区切りの表示行) — 表示は white-space:pre 前提。
  */
-export function splitForPaging(text: string, cols = 80, maxLines = PAGE_LINES): string[] {
+export function splitForPaging(text: string, cols = CLASSIC_COLS, maxLines = CLASSIC_ROWS): string[] {
+  const lines = wrapToLines(text, cols);
   const chunks: string[] = [];
-  let current: string[] = [];
-  let count = 0;
-  for (const line of text.split('\n')) {
-    const est = Math.max(1, estimateLines(line, cols));
-    if (count > 0 && count + est > maxLines) {
-      chunks.push(current.join('\n'));
-      current = [];
-      count = 0;
-    }
-    current.push(line);
-    count += est;
+  for (let i = 0; i < lines.length; i += maxLines) {
+    chunks.push(lines.slice(i, i + maxLines).join('\n'));
   }
-  if (current.length > 0) chunks.push(current.join('\n'));
-  return chunks;
+  return chunks.length > 0 ? chunks : [''];
 }

@@ -98,13 +98,40 @@ describe('styleTranslatedParagraphs: 見出し分離ヒューリスティック'
   });
 });
 
-describe('Pager / estimateLines (クラシックの [More] 送り)', () => {
-  it('estimateLines: 折返しと CJK 幅を概算する', async () => {
+describe('wrapLine / estimateLines (折返しカウント)', () => {
+  it('wrapLine: 空白境界で折り返す (英単語を途中で割らない)', async () => {
+    const { wrapLine } = await import('../src/web/ui/render.js');
+    // "aaaa bbbb cccc" を 10 桁で → "aaaa bbbb" / "cccc"
+    expect(wrapLine('aaaa bbbb cccc', 10)).toEqual(['aaaa bbbb', 'cccc']);
+    // 行頭の空白は折返し後に捨てる
+    expect(wrapLine('aaaaaaaa bbbbbbbb', 10)).toEqual(['aaaaaaaa', 'bbbbbbbb']);
+  });
+
+  it('wrapLine: 1 トークンが cols 超なら文字単位で割る', async () => {
+    const { wrapLine } = await import('../src/web/ui/render.js');
+    expect(wrapLine('x'.repeat(25), 10)).toEqual(['xxxxxxxxxx', 'xxxxxxxxxx', 'xxxxx']);
+  });
+
+  it('wrapLine: 全角は 2 桁幅で折り返す', async () => {
+    const { wrapLine } = await import('../src/web/ui/render.js');
+    // 全角 6 文字 = 幅 12 を 8 桁で → 4 文字(幅8) / 2 文字
+    expect(wrapLine('あいうえおか', 8)).toEqual(['あいうえ', 'おか']);
+  });
+
+  it('estimateLines: 改行コードだけでなく wrap 分も +1 で数える', async () => {
     const { estimateLines } = await import('../src/web/ui/render.js');
     expect(estimateLines('short')).toBe(1);
-    expect(estimateLines('a\nb\nc')).toBe(3);
-    expect(estimateLines('x'.repeat(170), 80)).toBe(3); // 170/80 → 3 行
+    expect(estimateLines('a\nb\nc')).toBe(3); // 改行 3 行
+    expect(estimateLines('x'.repeat(170), 80)).toBe(3); // wrap で 3 行 (170/80)
     expect(estimateLines('あ'.repeat(50), 80)).toBe(2); // 全角 50 = 幅 100 → 2 行
+    // 改行 + wrap の複合: 1 行目が wrap して 2 行 + 2 行目 1 行 = 3
+    expect(estimateLines('x'.repeat(120) + '\nshort', 80)).toBe(3);
+  });
+
+  it('estimateLines のデフォルト cols は 80 (クラシック定義)', async () => {
+    const { estimateLines, CLASSIC_COLS } = await import('../src/web/ui/render.js');
+    expect(CLASSIC_COLS).toBe(80);
+    expect(estimateLines('x'.repeat(81))).toBe(2); // デフォルト 80 桁で折返し
   });
 
   it('Pager: 1 ページを超える直前に waitFn を呼び、リセット後は呼ばない', async () => {
@@ -131,8 +158,8 @@ describe('Pager / estimateLines (クラシックの [More] 送り)', () => {
   });
 });
 
-describe('splitForPaging (長段落のページ分割)', () => {
-  it('maxLines ごとにチャンクへ分割する', async () => {
+describe('splitForPaging (長段落のページ分割・wrap 込み)', () => {
+  it('改行コードの行を maxLines ごとにチャンク化する', async () => {
     const { splitForPaging } = await import('../src/web/ui/render.js');
     const text = Array.from({ length: 25 }, (_, i) => `line${i}`).join('\n');
     const chunks = splitForPaging(text, 80, 10);
@@ -140,9 +167,21 @@ describe('splitForPaging (長段落のページ分割)', () => {
     expect(chunks[0]!.split('\n')).toHaveLength(10);
     expect(chunks.join('\n')).toBe(text); // 内容は欠落しない
   });
+
+  it('改行コードを含まない長い 1 段落も wrap 表示行で分割する (溢れ防止)', async () => {
+    const { splitForPaging } = await import('../src/web/ui/render.js');
+    // 全角 100 文字 = 幅 200 = 80 桁で 3 表示行 (80/80/40)。maxLines=2 → 2 チャンク
+    const para = 'あ'.repeat(100);
+    const chunks = splitForPaging(para, 80, 2);
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]!.split('\n')).toHaveLength(2); // 2 表示行
+    // 全文字が保たれる (欠落なし)
+    expect(chunks.join('').replace(/\n/g, '')).toBe(para);
+  });
+
   it('短い段落はそのまま 1 チャンク', async () => {
     const { splitForPaging } = await import('../src/web/ui/render.js');
-    expect(splitForPaging('a\nb', 80, 10)).toEqual(['a\nb']);
+    expect(splitForPaging('a b', 80, 10)).toEqual(['a b']);
   });
 });
 

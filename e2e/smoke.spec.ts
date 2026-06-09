@@ -18,14 +18,20 @@ test('ページが起動し、未設定なら設定ダイアログが開く', as
   await expect(page.locator('#terminal')).toContainText('日本語で遊ぶ');
 });
 
-test('ウェルカム画面のロゴ/サブタイトルとトップレベルの「開く」ボタン', async ({ page }) => {
+test('ウェルカム画面・上部バー左はステータス専用・☰メニューに操作集約', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '閉じる' }).click();
   await expect(page.locator('.welcome .logo')).toHaveText('yominterp');
   await expect(page.locator('.welcome .subtitle')).toContainText('日本語で遊ぶ');
-  // 「開く」がトップバーの一番左
-  const firstBtn = page.locator('#topbar button').first();
-  await expect(firstBtn).toHaveAttribute('id', 'btn-open-top');
+  // 上部バーの操作ボタンは ☰ のみ (左はステータスライン専用)
+  await expect(page.locator('#topbar button')).toHaveCount(1);
+  await expect(page.locator('#btn-menu')).toBeVisible();
+  // ☰ メニューを開くと操作項目が並ぶ
+  await expect(page.locator('#topbar-menu')).toBeHidden();
+  await page.locator('#btn-menu').click();
+  await expect(page.locator('#topbar-menu')).toBeVisible();
+  await expect(page.locator('#topbar-menu #btn-open-top')).toBeVisible();
+  await expect(page.locator('#topbar-menu #btn-settings')).toBeVisible();
   // 削除されたデスクトップ説明文が出ていない
   await expect(page.locator('#terminal')).not.toContainText('proxy 設定は不要');
 });

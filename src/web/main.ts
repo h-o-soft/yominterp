@@ -32,6 +32,8 @@ import { IdbSaveStore, ModalDialogPort } from './saves.js';
 import { DEFAULT_SETTINGS, type WebSettings, loadSettings, saveSettings } from './settings.js';
 import { analyzeStory, storyId } from './storyfile.js';
 import {
+  CLASSIC_COLS,
+  CLASSIC_ROWS,
   Pager,
   estimateLines,
   gridPlainText,
@@ -131,16 +133,26 @@ function waitForContinue(label: string): Promise<void> {
   });
 }
 
-/** 実画面の「1 ページ」行数 (端末ペインの高さ基準 — 本物のページャと同じ) */
-function screenPageLines(): number {
-  const lineHeight = parseFloat(getComputedStyle(terminal).lineHeight) || 24;
-  return Math.max(8, Math.floor(terminal.clientHeight / lineHeight) - 1);
+/**
+ * クラシックの 1 ページ表示行数 = 実表示枠の行数 − 1 ([More] バー分)。
+ * 枠は定義上 24 行だが、ウィンドウが小さく枠が縮む場合はその実行数で計算する
+ * (実表示領域に基づくページ送り。あふれを防ぐ)。
+ */
+function classicPageLines(): number {
+  const lh = parseFloat(getComputedStyle(terminal).lineHeight) || 24;
+  const padY =
+    parseFloat(getComputedStyle(terminal).paddingTop) +
+    parseFloat(getComputedStyle(terminal).paddingBottom);
+  const rows = Math.floor((terminal.clientHeight - padY) / lh);
+  return Math.max(6, Math.min(CLASSIC_ROWS, rows) - 1);
 }
 
-const pager = new Pager(
-  () => waitForContinue('—— [More] クリックまたはキーで続き ——'),
-  screenPageLines,
-);
+const pager = new Pager(async () => {
+  await waitForContinue('—— [More] クリックまたはキーで続き ——');
+  // 古典端末のページ動作: [More] で続けるとき画面をクリアして次ページを上から
+  // 表示する (枠 24 行を厳守し、前ページが残って枠を超えるのを防ぐ)。
+  terminal.innerHTML = '';
+}, classicPageLines);
 
 /**
  * ゲーム本文の表示前ゲート。[More] ページ送りはクラシック専用
@@ -149,7 +161,7 @@ const pager = new Pager(
  */
 async function pageGate(text: string): Promise<void> {
   if (!settings.classicMode) return;
-  await pager.beforeAppend(estimateLines(text, 80));
+  await pager.beforeAppend(estimateLines(text, CLASSIC_COLS));
 }
 
 /**
@@ -233,7 +245,7 @@ async function renderGameText(body: string, statusLineRaw?: string): Promise<str
   showStatus(statusLineRaw);
   if (body.trim() === '') return '';
   const ja = await translateOut(body);
-  for (const chunk of settings.classicMode ? splitForPaging(ja, 80, screenPageLines()) : [ja]) {
+  for (const chunk of settings.classicMode ? splitForPaging(ja, CLASSIC_COLS, classicPageLines()) : [ja]) {
     await pageGate(chunk);
     print('', chunk);
   }
@@ -280,8 +292,20 @@ async function renderRichOutput(out: {
       .trim();
     if (plain !== '') {
       const ja = await translateOut(plain);
-      for (const styled of styleTranslatedParagraphs(ja, paraLines)) {
-        for (const chunk of settings.classicMode ? splitForPaging(styled.text, 80, screenPageLines()) : [styled.text]) {
+      // grid (quote box) の後に本文が続くなら間に空き 1 行
+      if (shown !== '') {
+        await pageGate('');
+        print('', '');
+      }
+      const styledParas = styleTranslatedParagraphs(ja, paraLines);
+      for (const [pi, styled] of styledParas.entries()) {
+        // 段落間の空き 1 行 (クラシックは p margin 0 なので明示的な空行で区切る)。
+        // この 1 行もページ送りに計上し、行数計算と実表示を一致させる
+        if (pi > 0) {
+          await pageGate('');
+          print('', '');
+        }
+        for (const chunk of settings.classicMode ? splitForPaging(styled.text, CLASSIC_COLS, classicPageLines()) : [styled.text]) {
           await pageGate(chunk);
           printStyledPara(chunk, styled.style);
         }
@@ -699,9 +723,27 @@ function wireTopbar(): void {
   });
   $('btn-save').addEventListener('click', () => void submitDirect('save'));
   $('btn-restore').addEventListener('click', () => void submitDirect('restore'));
-  // 「開く」をトップレベル (一番左) からも (最も使う操作)。設定内のボタンと共通の
-  // file-input を起動する (change ハンドラは wireSettings で配線済み)
+  // 「開く」は設定内のボタンと共通の file-input を起動 (change は wireSettings 配線済み)
   $('btn-open-top').addEventListener('click', () => $<HTMLInputElement>('file-input').click());
+
+  // ☰ ハンバーガーメニューの開閉。項目クリックで閉じ、メニュー外クリックでも閉じる
+  const menuButton = $('btn-menu');
+  const menu = $('topbar-menu');
+  const setMenu = (open: boolean) => {
+    menu.hidden = !open;
+    menuButton.setAttribute('aria-expanded', String(open));
+  };
+  menuButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setMenu(menu.hidden);
+  });
+  // メニュー内ボタンを押したら各機能 (既存リスナ) 実行後にメニューを閉じる
+  for (const item of menu.querySelectorAll('button')) {
+    item.addEventListener('click', () => setMenu(false));
+  }
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !menu.contains(e.target as Node) && e.target !== menuButton) setMenu(false);
+  });
 }
 
 // ---- 起動 ----
@@ -727,7 +769,7 @@ function showWelcome(): void {
   subtitle.textContent = '英語のインタラクティブフィクションを日本語で遊ぶ';
   const hint = document.createElement('p');
   hint.className = 'hint';
-  hint.textContent = '左上の「開く」からゲームファイルを読み込み、「設定」で LLM 接続先を指定してください';
+  hint.textContent = '右上の ☰ メニュー →「開く」でゲームを読み込み、「設定」で LLM 接続先を指定してください';
   wrap.append(logo, subtitle, hint);
   terminal.appendChild(wrap);
 }
