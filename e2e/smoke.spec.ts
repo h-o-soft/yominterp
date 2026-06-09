@@ -18,6 +18,18 @@ test('ページが起動し、未設定なら設定ダイアログが開く', as
   await expect(page.locator('#terminal')).toContainText('日本語で遊ぶ');
 });
 
+test('ウェルカム画面のロゴ/サブタイトルとトップレベルの「開く」ボタン', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '閉じる' }).click();
+  await expect(page.locator('.welcome .logo')).toHaveText('yominterp');
+  await expect(page.locator('.welcome .subtitle')).toContainText('日本語で遊ぶ');
+  // 「開く」がトップバーの一番左
+  const firstBtn = page.locator('#topbar button').first();
+  await expect(firstBtn).toHaveAttribute('id', 'btn-open-top');
+  // 削除されたデスクトップ説明文が出ていない
+  await expect(page.locator('#terminal')).not.toContainText('proxy 設定は不要');
+});
+
 test('設定が localStorage に永続される (apiKey は既定で永続しない)', async ({ page }) => {
   await page.goto('/');
   await page.locator('#set-baseurl').fill('http://127.0.0.1:9999/v1');
@@ -35,6 +47,10 @@ test('ローカルファイルが WASM で起動しイントロが表示され�
   page,
 }) => {
   test.skip(!existsSync(DARKPIT), `${DARKPIT} なし (ローカル専用テスト素材)`);
+  // WASM 起動確認が主旨なので、ページ送り ([More]) のないモダンモードで実行する
+  await page.addInitScript(() => {
+    localStorage.setItem('yominterp-settings', JSON.stringify({ classicMode: false }));
+  });
   await page.goto('/');
   await page.locator('#set-baseurl').fill('http://127.0.0.1:1/v1'); // 到達不能 endpoint
   await page.locator('#set-model').fill('dummy');

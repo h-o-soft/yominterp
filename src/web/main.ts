@@ -159,6 +159,7 @@ async function pageGate(text: string): Promise<void> {
  */
 function honorClear(): void {
   terminal.innerHTML = '';
+  terminal.classList.remove('welcoming');
   pager.reset();
 }
 
@@ -494,6 +495,7 @@ async function handleUserInput(ja: string): Promise<void> {
 async function startGame(data: Uint8Array, filename: string): Promise<void> {
   setBusy(true);
   terminal.innerHTML = '';
+  terminal.classList.remove('welcoming');
   clearChoices();
   gameOver = false;
   try {
@@ -697,6 +699,9 @@ function wireTopbar(): void {
   });
   $('btn-save').addEventListener('click', () => void submitDirect('save'));
   $('btn-restore').addEventListener('click', () => void submitDirect('restore'));
+  // 「開く」をトップレベル (一番左) からも (最も使う操作)。設定内のボタンと共通の
+  // file-input を起動する (change ハンドラは wireSettings で配線済み)
+  $('btn-open-top').addEventListener('click', () => $<HTMLInputElement>('file-input').click());
 }
 
 // ---- 起動 ----
@@ -708,10 +713,28 @@ form.addEventListener('submit', (e) => {
   void handleUserInput(value);
 });
 
+/** 起動時/ゲーム未読み込み時のウェルカム画面 (ロゴ + サブタイトル + 操作ヒント) */
+function showWelcome(): void {
+  terminal.innerHTML = '';
+  terminal.classList.add('welcoming');
+  const wrap = document.createElement('div');
+  wrap.className = 'welcome';
+  const logo = document.createElement('p');
+  logo.className = 'logo';
+  logo.textContent = 'yominterp';
+  const subtitle = document.createElement('p');
+  subtitle.className = 'subtitle';
+  subtitle.textContent = '英語のインタラクティブフィクションを日本語で遊ぶ';
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent = '左上の「開く」からゲームファイルを読み込み、「設定」で LLM 接続先を指定してください';
+  wrap.append(logo, subtitle, hint);
+  terminal.appendChild(wrap);
+}
+
 wireSettings();
 wireTopbar();
-print('system', 'yominterp — 英語のインタラクティブフィクションを日本語で遊ぶ');
-print('system', '右上の「設定」から LLM 接続先を設定し、ゲームを読み込んでください');
+showWelcome();
 
 /**
  * 自動検証モード (VITE_AUTOTEST=<collector URL> で起動した時のみ)。
@@ -765,7 +788,6 @@ async function runAutotest(collector: string): Promise<void> {
 
 void (async () => {
   await initNativeFetch();
-  if (isTauri) print('system', 'デスクトップ版: ローカル LLM へ直結します (CORS/proxy 設定は不要)');
   const autotest = (import.meta.env.VITE_AUTOTEST as string | undefined) ?? '';
   if (autotest !== '') {
     await runAutotest(autotest);
