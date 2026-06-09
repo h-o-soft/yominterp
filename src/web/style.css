@@ -152,6 +152,10 @@ body.classic #terminal {
    段落マージンは 0 — 段落間の空きは出力側が空行 (1 表示行) で入れ、ページ送りの
    行数計算と実表示を一致させる (margin が行数計算からズレる原因だった) */
 body.classic #terminal p { white-space: pre; margin: 0; }
+/* 空行 (textContent='' の <p>) は margin:0 だと高さ 0 になり消えてしまう。
+   ゲーム由来の空行を必ず 1 行ぶんの高さで見せる (これが無いとクラシックで
+   段落間の空行が視覚的に脱落していた) */
+body.classic #terminal p:empty { min-height: 1.55em; }
 body.classic #terminal .gridbox { white-space: pre; margin: 0.4rem 0; }
 body.classic #topbar {
   border-bottom: 1px solid #2a3a30;

@@ -55,6 +55,23 @@ test('ステータスラインは左=場所名 / 右=右寄せ情報の 2 要素
   expect(justify).toBe('space-between');
 });
 
+test('クラシックモードの空行 (空 <p>) は実描画で 1 行ぶんの高さを持つ', async ({ page }) => {
+  // ゲーム由来の空行が margin:0 で高さ 0 になり視覚的に消えていた回帰の防止。
+  // データモデルの行数ではなく「実際に描画された高さ」で確認する。
+  await page.goto('/');
+  await page.getByRole('button', { name: '閉じる' }).click();
+  await expect(page.locator('body')).toHaveClass(/classic/); // クラシックが既定
+  const rendered = await page.evaluate(() => {
+    const t = document.getElementById('terminal')!;
+    const p = document.createElement('p'); // 空段落 = 空行
+    t.appendChild(p);
+    const h = p.getBoundingClientRect().height;
+    p.remove();
+    return h;
+  });
+  expect(rendered).toBeGreaterThan(10); // 0 ではなく 1 行ぶん (≈23px) の高さ
+});
+
 test('設定が localStorage に永続される (apiKey は既定で永続しない)', async ({ page }) => {
   await page.goto('/');
   await page.locator('#set-baseurl').fill('http://127.0.0.1:9999/v1');
