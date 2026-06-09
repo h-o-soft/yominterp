@@ -365,24 +365,40 @@ async function printBodyParagraphs(
   fallbackStyle?: SpanStyle,
 ): Promise<string> {
   let shown = '';
+  const usePager = settings.classicMode;
+  // 空行は即出力せず保留する。[More] のページクリアでページ境界の空行が
+  // 消えないよう、保留空行は「次の段落とセット」で改ページ判定し、改ページ後の
+  // 先頭に繰り越して出す (タイトル前の空行などが境界で失われないように)。
+  let pendingBlanks = 0;
+  const emitBlanks = () => {
+    for (let i = 0; i < pendingBlanks; i++) {
+      print('', '');
+      shown += '\n';
+    }
+    pendingBlanks = 0;
+  };
   for (const block of splitBlocks(lines)) {
     if (block.blank) {
-      await pageGate('');
-      print('', ''); // 空行をそのまま 1 行出す (集約しない)
-      shown += '\n';
+      pendingBlanks++;
       continue;
     }
     const plain = block.lines.map((l) => l.spans.map((s) => s.text).join('')).join('\n');
     const ja = await translateOut(plain);
     const style = uniformStyle(block.lines) ?? fallbackStyle;
-    for (const chunk of settings.classicMode
-      ? splitForPaging(ja, CLASSIC_COLS, classicPageLines())
-      : [ja]) {
-      await pageGate(chunk);
+    const chunks = usePager ? splitForPaging(ja, CLASSIC_COLS, classicPageLines()) : [ja];
+    // 保留空行 + 段落先頭をまとめて改ページ判定 (空行が境界でちぎれて消えない)
+    if (usePager) await pager.beforeAppend(pendingBlanks + estimateLines(chunks[0]!, CLASSIC_COLS));
+    emitBlanks(); // 改ページ後ならクリア済みの次ページ先頭に空行を繰り越す
+    printStyledPara(chunks[0]!, style);
+    for (const chunk of chunks.slice(1)) {
+      if (usePager) await pager.beforeAppend(estimateLines(chunk, CLASSIC_COLS));
       printStyledPara(chunk, style);
     }
     shown += ja;
   }
+  // ターン末尾の空行も保持する (集約・削除しない)
+  if (usePager && pendingBlanks > 0) await pager.beforeAppend(pendingBlanks);
+  emitBlanks();
   return shown;
 }
 
