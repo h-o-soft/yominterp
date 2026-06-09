@@ -6,6 +6,7 @@
  *
  * メタコマンド: /quit /raw /undo /retry /score /save /help
  */
+import { DEFAULT_LANGUAGE } from '../core/i18n/language.js';
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { parseStatusLine } from '../core/engine.js';
@@ -66,9 +67,11 @@ async function main(): Promise<void> {
   };
 
   const prompts = new FilePromptProvider(['prompts', 'fixtures']);
+  const language = cfg.language ?? DEFAULT_LANGUAGE;
   const entry = new EntryTranslator(llm, prompts, {
     contextTurns: cfg.context.turns,
     logger,
+    language,
   });
   await entry.init(vocab);
   const exit = new ExitTranslator(
@@ -76,6 +79,7 @@ async function main(): Promise<void> {
     prompts,
     new FileCacheStore(`${cfg.cacheDir}/exit-translations.json`),
     logger,
+    language,
   );
   // 固有名詞グロッサリ (Cora=コーラ 等の正準表記) をオブジェクト名から構築
   await exit.init(usefulObjectNames(vocab.objectNames));

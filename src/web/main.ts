@@ -637,9 +637,16 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
     entry = new EntryTranslator(llm, prompts, {
       contextTurns: settings.contextTurns,
       logger,
+      language: settings.language,
     });
     await entry.init(info.vocab);
-    exitTr = new ExitTranslator(llm, prompts, new IdbCacheStore(`exit:${id}`), logger);
+    exitTr = new ExitTranslator(
+      llm,
+      prompts,
+      new IdbCacheStore(`exit:${id}`),
+      logger,
+      settings.language,
+    );
     const glossaryNote = print('thinking', '固有名詞の用語集を準備中…');
     try {
       await exitTr.init(usefulObjectNames(info.vocab.objectNames));

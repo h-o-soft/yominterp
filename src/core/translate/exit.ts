@@ -13,6 +13,7 @@
  *
  * このファイルは環境非依存 (Node API import 禁止)。
  */
+import { type LanguageCode, DEFAULT_LANGUAGE, promptFileName } from '../i18n/language.js';
 import type { ChatMessage, LLMClient } from '../llm/client.js';
 import type { CacheStore, EventLogger, PromptProvider } from '../ports.js';
 import { NULL_LOGGER } from '../ports.js';
@@ -49,19 +50,24 @@ const KATAKANA_MENTION_RE = /([ァ-ヴー・]{2,})\s*[(（]([A-Z][A-Za-z'’ -]{
 
 export class ExitTranslator {
   private systemPrompt = '';
+  /** system プロンプトの版数ハッシュ (言語/プロンプト改訂をキャッシュキーへ反映) */
+  private promptHash = '0';
   private readonly mem = new Map<string, string>();
   private readonly logger: EventLogger;
   /** EN 固有名詞 → カタカナ正準表記 */
   private readonly glossary = new Map<string, string>();
   private glossaryHash = '0';
+  private readonly language: LanguageCode;
 
   constructor(
     private readonly llm: LLMClient,
     private readonly prompts: PromptProvider,
     private readonly cache?: CacheStore,
     logger: EventLogger = NULL_LOGGER,
+    language: LanguageCode = DEFAULT_LANGUAGE,
   ) {
     this.logger = logger;
+    this.language = language;
   }
 
   /**
@@ -69,7 +75,10 @@ export class ExitTranslator {
    *        LLM で人名等だけを選別してグロッサリを構築する (結果は CacheStore に永続)。
    */
   async init(properNounCandidates: string[] = []): Promise<void> {
-    this.systemPrompt = await this.prompts.load('exit.system.md');
+    // ja は無印 (canonical)、他言語は接尾辞。非 ja でファイルが無ければ
+    // PromptProvider.load が throw する (fail closed: 暗黙の日本語化をしない)。
+    this.systemPrompt = await this.prompts.load(promptFileName('exit.system.md', this.language));
+    this.promptHash = fnv1a(this.systemPrompt);
     if (properNounCandidates.length > 0) {
       await this.buildGlossary(properNounCandidates);
     }
@@ -86,7 +95,8 @@ export class ExitTranslator {
 
   private async buildGlossary(candidates: string[]): Promise<void> {
     const sorted = [...new Set(candidates)].sort();
-    const cacheKey = `exit-glossary:${fnv1a(sorted.join('|') + '@' + this.exitModelId())}`;
+    // 言語別 glossary が混ざらないよう language をキーに含める (model は既存どおり)
+    const cacheKey = `exit-glossary:${this.language}:${fnv1a(sorted.join('|') + '@' + this.exitModelId())}`;
     let listing = await this.cache?.get(cacheKey);
     if (listing === undefined) {
       const messages: ChatMessage[] = [
@@ -151,8 +161,9 @@ export class ExitTranslator {
   async translate(body: string): Promise<string> {
     const normalized = unwrapParagraphs(body);
     if (normalized === '') return '';
-    // グロッサリ版数をキーに含め、表記が違う時期のキャッシュと混ざらないようにする
-    const key = `exit:${this.glossaryHash}:${fnv1a(normalized)}`;
+    // キャッシュキーに language + prompt版数 + model + glossary版数 を含め、
+    // 言語間/プロンプト改訂/モデル違い/表記確定前の訳が混ざらないようにする。
+    const key = `exit:${this.language}:${this.promptHash}:${this.exitModelId()}:${this.glossaryHash}:${fnv1a(normalized)}`;
 
     const hit = this.mem.get(key) ?? (await this.cache?.get(key));
     if (hit !== undefined) {

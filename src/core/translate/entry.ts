@@ -7,6 +7,7 @@
  *
  * このファイルは環境非依存 (Node API import 禁止)。
  */
+import { type LanguageCode, DEFAULT_LANGUAGE, promptFileName } from '../i18n/language.js';
 import { type ChatMessage, type LLMClient } from '../llm/client.js';
 import type { EventLogger, PromptProvider } from '../ports.js';
 import { NULL_LOGGER } from '../ports.js';
@@ -165,6 +166,8 @@ export interface EntryTranslatorOptions {
   /** 直近文脈の文字数上限 (長文ゲームでのプロンプト肥大対策)。既定 4096 */
   contextChars?: number;
   logger?: EventLogger;
+  /** プレイヤー言語 (既定 ja)。ja は無印プロンプト、他言語は接尾辞 + fail closed */
+  language?: LanguageCode;
 }
 
 export class EntryTranslator {
@@ -184,7 +187,10 @@ export class EntryTranslator {
   }
 
   async init(vocab: GameVocabulary): Promise<void> {
-    const template = await this.prompts.load('entry.system.md');
+    const lang = this.opts.language ?? DEFAULT_LANGUAGE;
+    // ja は無印 (canonical)、他言語は接尾辞。非 ja でファイルが無ければ
+    // PromptProvider.load が throw する (fail closed: 暗黙の日本語化をしない)。
+    const template = await this.prompts.load(promptFileName('entry.system.md', lang));
     const objects = usefulObjectNames(vocab.objectNames);
     this.dictWordLen = Math.max(6, ...vocab.dictWords.map((w) => w.length));
     this.systemPrompt = template
@@ -192,10 +198,17 @@ export class EntryTranslator {
       .replace('{{OBJECT_NAMES}}', objects.join(', '))
       .replaceAll('{{DICT_WORD_LEN}}', String(this.dictWordLen));
     this.dictSet = new Set(vocab.dictWords.map((w) => w.toLowerCase()));
-    try {
-      this.fewshot = JSON.parse(await this.prompts.load('fewshot.entry.json')) as FewShotExample[];
-    } catch {
-      this.fewshot = [];
+    // few-shot: ja は parse 失敗を空配列で握りつぶす (後方互換)。非 ja は
+    // missing / JSON 不正も fail closed (起動エラーへ寄せる)。
+    const fewshotName = promptFileName('fewshot.entry.json', lang);
+    if (lang === DEFAULT_LANGUAGE) {
+      try {
+        this.fewshot = JSON.parse(await this.prompts.load(fewshotName)) as FewShotExample[];
+      } catch {
+        this.fewshot = [];
+      }
+    } else {
+      this.fewshot = JSON.parse(await this.prompts.load(fewshotName)) as FewShotExample[];
     }
   }
 

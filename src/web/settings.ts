@@ -3,6 +3,7 @@
  * - apiKey は既定 in-memory (リロードで消える)。永続化は明示 opt-in (plan.md 段階2)
  * - その他の設定は localStorage
  */
+import { type LanguageCode, DEFAULT_LANGUAGE, coerceLanguage } from '../core/i18n/language.js';
 
 export interface WebSettings {
   baseUrl: string;
@@ -16,6 +17,8 @@ export interface WebSettings {
   showRaw: boolean;
   /** クラシック端末モード (固定幅・端末風)。false でモダン可変幅 */
   classicMode: boolean;
+  /** プレイヤー言語 (既定 ja)。多言語は実験的オプション */
+  language: LanguageCode;
 }
 
 const LS_KEY = 'yominterp-settings';
@@ -32,6 +35,7 @@ export const DEFAULT_SETTINGS: WebSettings = {
   contextTurns: 2,
   showRaw: false,
   classicMode: true,
+  language: DEFAULT_LANGUAGE,
 };
 
 export function loadSettings(): WebSettings {
@@ -42,6 +46,13 @@ export function loadSettings(): WebSettings {
     /* localStorage 不可・破損 → 既定 */
   }
   const settings: WebSettings = { ...DEFAULT_SETTINGS, ...stored, apiKey: '' };
+  // localStorage が壊れて不正な言語コードでもアプリは起動させる (既定へ)。
+  // 設定 UI のセレクタは許可値のみなので、実害は手編集時の堅牢性のみ。
+  try {
+    settings.language = coerceLanguage(settings.language);
+  } catch {
+    settings.language = DEFAULT_LANGUAGE;
+  }
   if (settings.persistKey) {
     try {
       settings.apiKey = localStorage.getItem(LS_API_KEY) ?? '';
