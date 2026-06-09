@@ -12,12 +12,19 @@ import type { CacheStore, EventLogger, LLMTransport, PromptProvider } from '../c
 import entrySystem from '../../prompts/entry.system.md?raw';
 import exitSystem from '../../prompts/exit.system.md?raw';
 import fewshotEntry from '../../prompts/fewshot.entry.json?raw';
+// 言語別プロンプト (フェーズA: フランス語パイロット)。他言語は順次追加
+import entrySystemFr from '../../prompts/entry.system.fr.md?raw';
+import exitSystemFr from '../../prompts/exit.system.fr.md?raw';
+import fewshotEntryFr from '../../prompts/fewshot.entry.fr.json?raw';
 
 export class BundledPromptProvider implements PromptProvider {
   private readonly map: Record<string, string> = {
     'entry.system.md': entrySystem,
     'exit.system.md': exitSystem,
     'fewshot.entry.json': fewshotEntry,
+    'entry.system.fr.md': entrySystemFr,
+    'exit.system.fr.md': exitSystemFr,
+    'fewshot.entry.fr.json': fewshotEntryFr,
   };
   async load(name: string): Promise<string> {
     const found = this.map[name];

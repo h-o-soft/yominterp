@@ -13,7 +13,12 @@
  *
  * このファイルは環境非依存 (Node API import 禁止)。
  */
-import { type LanguageCode, DEFAULT_LANGUAGE, promptFileName } from '../i18n/language.js';
+import {
+  type LanguageCode,
+  DEFAULT_LANGUAGE,
+  LANGUAGE_PROFILES,
+  promptFileName,
+} from '../i18n/language.js';
 import type { ChatMessage, LLMClient } from '../llm/client.js';
 import type { CacheStore, EventLogger, PromptProvider } from '../ports.js';
 import { NULL_LOGGER } from '../ports.js';
@@ -79,7 +84,9 @@ export class ExitTranslator {
     // PromptProvider.load が throw する (fail closed: 暗黙の日本語化をしない)。
     this.systemPrompt = await this.prompts.load(promptFileName('exit.system.md', this.language));
     this.promptHash = fnv1a(this.systemPrompt);
-    if (properNounCandidates.length > 0) {
+    // glossary (カタカナ正準化) は日本語のみ。ラテン文字言語は固有名詞を
+    // 原文維持するため glossary を構築しない (LANGUAGE_PROFILES[lang].glossary)。
+    if (LANGUAGE_PROFILES[this.language].glossary === 'katakana' && properNounCandidates.length > 0) {
       await this.buildGlossary(properNounCandidates);
     }
   }
@@ -183,7 +190,8 @@ export class ExitTranslator {
     this.mem.set(key, ja);
     await this.cache?.set(key, ja);
     this.logger.log({ event: 'exit.translate', key, chars: normalized.length });
-    this.harvestProperNouns(ja);
+    // カタカナ(原文)併記からの固有名詞回収も日本語のみ
+    if (LANGUAGE_PROFILES[this.language].glossary === 'katakana') this.harvestProperNouns(ja);
     return ja;
   }
 }

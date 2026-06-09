@@ -60,12 +60,40 @@ export interface LanguageProfile {
   code: LanguageCode;
   /** UI の言語セレクタ等に出す表示名 */
   label: string;
+  /**
+   * 固有名詞 glossary 戦略:
+   * - 'katakana': 日本語のカタカナ正準化 (LLM で人名を選別 + カタカナ(原文)併記から回収)
+   * - 'none': 原文維持 (identity)。ラテン文字言語は固有名詞をそのまま使うため glossary 不要
+   */
+  glossary: 'katakana' | 'none';
+  /**
+   * 入口 META_INTENT のキーワード正規表現 (メタ操作の意図判定)。
+   * [英コマンドにマッチする RegExp, プレイヤー言語の意図キーワード RegExp][]
+   */
+  metaIntent: [RegExp, RegExp][];
 }
 
+/** ja の META_INTENT (日本語キーワード) — 既存挙動を変えないため exit/entry から移設 */
+const JA_META_INTENT: [RegExp, RegExp][] = [
+  [/^(quit|q)$/, /終了|やめ(る|たい)|終わ(る|り|らせ)|ゲームを(終|や)|クイット/],
+  [/^restart$/, /最初から|初めから|リスタート|やり直|再スタート/],
+  [/^restore$/, /ロード|リストア|復元|再開|セーブを(読|呼)/],
+  [/^save$/, /セーブ|保存/],
+  [/^undo$/, /取り消|アンドゥ|(手|ターン)を戻/],
+];
+
+const FR_META_INTENT: [RegExp, RegExp][] = [
+  [/^(quit|q)$/, /quitter|arrêter|terminer le jeu|abandonner/i],
+  [/^restart$/, /recommencer|redémarrer|depuis le début/i],
+  [/^restore$/, /charger|restaurer|reprendre|sauvegarde/i],
+  [/^save$/, /sauvegarder|enregistrer/i],
+  [/^undo$/, /annuler|défaire|revenir en arrière/i],
+];
+
 export const LANGUAGE_PROFILES: Record<LanguageCode, LanguageProfile> = {
-  ja: { code: 'ja', label: '日本語' },
-  es: { code: 'es', label: 'Español' },
-  fr: { code: 'fr', label: 'Français' },
-  de: { code: 'de', label: 'Deutsch' },
-  'pt-BR': { code: 'pt-BR', label: 'Português (Brasil)' },
+  ja: { code: 'ja', label: '日本語', glossary: 'katakana', metaIntent: JA_META_INTENT },
+  es: { code: 'es', label: 'Español', glossary: 'none', metaIntent: [] },
+  fr: { code: 'fr', label: 'Français', glossary: 'none', metaIntent: FR_META_INTENT },
+  de: { code: 'de', label: 'Deutsch', glossary: 'none', metaIntent: [] },
+  'pt-BR': { code: 'pt-BR', label: 'Português (Brasil)', glossary: 'none', metaIntent: [] },
 };
