@@ -142,20 +142,23 @@ const pager = new Pager(
   screenPageLines,
 );
 
-/** ゲーム本文の表示前ゲート (クラシック時のみページ送り) */
+/**
+ * ゲーム本文の表示前ゲート。[More] ページ送りはクラシック専用
+ * (モダンはスクロールで一気に読める利点を保つため)。
+ * キー待ち・画面クリアはモード非依存で honor する (別関数)。
+ */
 async function pageGate(text: string): Promise<void> {
   if (!settings.classicMode) return;
   await pager.beforeAppend(estimateLines(text, 80));
 }
 
-/** 画面クリア (クラシック時は端末を実際にクリア。モダンは区切り線) */
+/**
+ * 画面クリア (ゲームが画面クリアを意図した演出。両モードで honor する)。
+ * これはレイアウト (固定幅/可変幅) とは直交する「ゲームの表示意図」なので
+ * モダンモードでも実際に端末をクリアする。
+ */
 function honorClear(): void {
-  if (settings.classicMode) {
-    terminal.innerHTML = '';
-  } else {
-    const hr = document.createElement('hr');
-    terminal.appendChild(hr);
-  }
+  terminal.innerHTML = '';
   pager.reset();
 }
 
@@ -543,16 +546,15 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
     let out = await engine.start();
     loading.remove(); // 起動完了 → ローディング表示を消す
     // 冒頭の pause/引用画面: メニュー・真の質問でなければ表示して進める。
-    // クラシックモードではゲームのキー待ちを honor し、ユーザーのキー入力を待つ
+    // ゲームのキー入力待ちは演出意図なので**両モードで honor** し、ユーザーの
+    // キー入力を待つ (モダン/クラシックの差はレイアウトと More 送りだけ)。
     while (
       out.kind === 'query' &&
       detectMenu(out.body) === undefined &&
       !REAL_QUESTION_RE.test(out.body.trimEnd())
     ) {
       await renderRichOutput(out);
-      if (settings.classicMode) {
-        await waitForContinue('—— キーを押して続行 ——');
-      }
+      await waitForContinue('—— キーを押して続行 ——');
       out = await engine.send('');
     }
     session.pushGameOutput(out.body);

@@ -145,3 +145,23 @@ describe('splitForPaging (長段落のページ分割)', () => {
     expect(splitForPaging('a\nb', 80, 10)).toEqual(['a\nb']);
   });
 });
+
+/**
+ * 回帰防止: 冒頭キー待ち・画面クリアはモード非依存で honor する。
+ * (Tauri で classicMode=false 保存時にキー待ちが素通りしていた件の回帰防止。
+ *  ロジックは main.ts のループ条件 — ここでは「分岐が classicMode を見ない」契約を
+ *  ソース文字列で固定する軽量ガード。実挙動は e2e で確認。)
+ */
+import { readFileSync } from 'node:fs';
+describe('キー待ち/クリアのモード非依存契約', () => {
+  const main = readFileSync('src/web/main.ts', 'utf8');
+  it('honorClear は classicMode で分岐しない (両モードで実クリア)', () => {
+    const fn = main.slice(main.indexOf('function honorClear'), main.indexOf('function honorClear') + 200);
+    expect(fn).not.toContain('settings.classicMode');
+  });
+  it('冒頭キー待ちループは classicMode 条件なしで waitForContinue を呼ぶ', () => {
+    const loop = main.slice(main.indexOf('冒頭の pause/引用画面'), main.indexOf('冒頭の pause/引用画面') + 400);
+    expect(loop).toContain("waitForContinue('—— キーを押して続行 ——')");
+    expect(loop).not.toMatch(/if \(settings\.classicMode\)\s*\{\s*await waitForContinue/);
+  });
+});
