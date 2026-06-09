@@ -2,7 +2,7 @@
  * Web プレイヤーアプリのエントリ (plan.md 段階2a)。
  * CLI (src/cli/main.ts) と同じ翻訳コア/セッション機構を Web UI に接続する。
  */
-import { parseStatusLine } from '../core/engine.js';
+import { parseStatusGeneric } from '../core/engine.js';
 import { LLMClient } from '../core/llm/client.js';
 import { type MenuChoice, type MenuSpec, detectMenu, resolveMenuKey, splitMenuBlock } from '../core/menu.js';
 import { REAL_QUESTION_RE, Session, sendResolvingPauses } from '../core/session.js';
@@ -31,12 +31,27 @@ function wasmLoader(vm: 'bocfel' | 'glulxe'): () => Promise<ArrayBuffer> {
 import { IdbSaveStore, ModalDialogPort } from './saves.js';
 import { DEFAULT_SETTINGS, type WebSettings, loadSettings, saveSettings } from './settings.js';
 import { analyzeStory, storyId } from './storyfile.js';
+import {
+  CLASSIC_COLS,
+  CLASSIC_ROWS,
+  Pager,
+  estimateLines,
+  gridPlainText,
+  splitBlocks,
+  splitForPaging,
+  styleToCss,
+  wrapToLines,
+} from './ui/render.js';
+import type { EngineOutput, SpanStyle, StyledBlock, StyledLine } from '../core/engine.js';
+import { uniformStyle } from '../core/engine.js';
 
 // ---- DOM ----
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
 const terminal = $('#terminal'.slice(1));
 const statusLine = $('status-line');
+const statusLeft = $('status-left');
+const statusRight = $('status-right');
 const input = $<HTMLInputElement>('input');
 const sendButton = $<HTMLButtonElement>('btn-send');
 const choices = $('choices');
@@ -49,6 +64,119 @@ function print(cls: string, text: string): HTMLParagraphElement {
   terminal.appendChild(p);
   terminal.scrollTop = terminal.scrollHeight;
   return p;
+}
+
+/** 段落一様装飾付きの段落を出力する (Lv1) */
+function printStyledPara(text: string, style: SpanStyle | undefined): void {
+  const p = print('', text);
+  const css = styleToCss(style);
+  if (css.classes.length > 0 || css.inline !== '') {
+    p.classList.add('styled', ...css.classes);
+    if (css.inline !== '') p.setAttribute('style', css.inline);
+  }
+}
+
+/** quote box (grid ブロック) を装飾付きで出力する。中身は訳文テキスト。
+ *  クラシックは pre 表示なので 80 桁で折り返してから入れる (横はみ出し防止) */
+function printGridBox(text: string, style: SpanStyle | undefined): void {
+  const div = document.createElement('div');
+  div.className = 'gridbox';
+  div.textContent = settings.classicMode ? wrapToLines(text, CLASSIC_COLS).join('\n') : text;
+  const css = styleToCss(style ?? { reverse: true });
+  div.classList.add(...css.classes);
+  if (css.inline !== '') div.setAttribute('style', css.inline);
+  terminal.appendChild(div);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+/** 原文ビュー (Lv2): スパン装飾を忠実に描画する */
+function printRawRich(blocks: StyledBlock[]): void {
+  for (const block of blocks) {
+    const el = document.createElement(block.kind === 'grid' ? 'div' : 'p');
+    el.className = block.kind === 'grid' ? 'gridbox raw' : 'raw';
+    for (const [i, line] of block.lines.entries()) {
+      for (const span of line.spans) {
+        const sp = document.createElement('span');
+        sp.textContent = span.text;
+        const css = styleToCss(span.style);
+        if (css.classes.length > 0) sp.classList.add(...css.classes);
+        if (css.inline !== '') sp.setAttribute('style', css.inline);
+        el.appendChild(sp);
+      }
+      if (i < block.lines.length - 1) el.appendChild(document.createTextNode('\n'));
+    }
+    terminal.appendChild(el);
+  }
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+/**
+ * クラシックモードの続行操作待ち ([More] / キー待ち)。
+ * バーを表示し、クリックまたは任意のキー入力で resolve する。
+ */
+function waitForContinue(label: string): Promise<void> {
+  return new Promise((resolve) => {
+    const bar = document.createElement('button');
+    bar.className = 'more-bar';
+    bar.textContent = label;
+    terminal.appendChild(bar);
+    terminal.scrollTop = terminal.scrollHeight;
+    const done = () => {
+      removeEventListener('keydown', onKey, true);
+      bar.remove();
+      resolve();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      done();
+    };
+    bar.addEventListener('click', done, { once: true });
+    addEventListener('keydown', onKey, { capture: true, once: true });
+    bar.focus();
+  });
+}
+
+/**
+ * クラシックの 1 ページ表示行数 = 実表示枠の行数 − 1 ([More] バー分)。
+ * 枠は定義上 24 行だが、ウィンドウが小さく枠が縮む場合はその実行数で計算する
+ * (実表示領域に基づくページ送り。あふれを防ぐ)。
+ */
+function classicPageLines(): number {
+  const lh = parseFloat(getComputedStyle(terminal).lineHeight) || 24;
+  const padY =
+    parseFloat(getComputedStyle(terminal).paddingTop) +
+    parseFloat(getComputedStyle(terminal).paddingBottom);
+  const rows = Math.floor((terminal.clientHeight - padY) / lh);
+  return Math.max(6, Math.min(CLASSIC_ROWS, rows) - 1);
+}
+
+const pager = new Pager(async () => {
+  await waitForContinue('—— [More] クリックまたはキーで続き ——');
+  // 古典端末のページ動作: [More] で続けるとき画面をクリアして次ページを上から
+  // 表示する (枠 24 行を厳守し、前ページが残って枠を超えるのを防ぐ)。
+  terminal.innerHTML = '';
+}, classicPageLines);
+
+/**
+ * ゲーム本文の表示前ゲート。[More] ページ送りはクラシック専用
+ * (モダンはスクロールで一気に読める利点を保つため)。
+ * キー待ち・画面クリアはモード非依存で honor する (別関数)。
+ */
+async function pageGate(text: string): Promise<void> {
+  if (!settings.classicMode) return;
+  await pager.beforeAppend(estimateLines(text, CLASSIC_COLS));
+}
+
+/**
+ * 画面クリア (ゲームが画面クリアを意図した演出。両モードで honor する)。
+ * これはレイアウト (固定幅/可変幅) とは直交する「ゲームの表示意図」なので
+ * モダンモードでも実際に端末をクリアする。
+ */
+function honorClear(): void {
+  terminal.innerHTML = '';
+  terminal.classList.remove('welcoming');
+  pager.reset();
 }
 
 function setBusy(busy: boolean): void {
@@ -92,12 +220,71 @@ function makeLLM(): LLMClient {
   }, logger);
 }
 
-function showStatus(line: string | undefined): void {
+/** ステータス行の前回の生テキスト (重複翻訳を避ける) */
+let lastStatusRaw: string | undefined;
+
+function showStatus(line: string | undefined, style?: SpanStyle): void {
   if (line === undefined) return;
-  const s = parseStatusLine(line);
-  statusLine.textContent = s
-    ? `${s.room}  得点: ${s.score}  手数: ${s.moves}`
-    : line.trim();
+  // ゲーム指定のステータス色 (例: ghosts は赤の反転バー) を topbar に反映
+  const topbar = document.getElementById('topbar')!;
+  const css = styleToCss(style);
+  if (css.inline !== '') {
+    topbar.setAttribute('style', css.inline);
+    statusLine.setAttribute('style', 'color: inherit');
+  }
+  if (line === lastStatusRaw) return;
+  lastStatusRaw = line;
+
+  // 左=場所名 / 右=右寄せ情報 (得点・手数 / 日付等) を別要素に振り分けて右寄せ表示する
+  const setStatus = (left: string, right: string) => {
+    if (lastStatusRaw !== line) return;
+    statusLeft.textContent = left;
+    statusRight.textContent = right;
+  };
+  const parsed = parseStatusGeneric(line);
+  // まず英語/数値を即表示 (翻訳待ちでブロックしない)。裏で和訳して差し替える
+  if ('room' in parsed) {
+    const right = `得点: ${parsed.score}　手数: ${parsed.moves}`;
+    setStatus(parsed.room, right);
+    void translateOut(parsed.room).then((ja) => setStatus(ja, right));
+  } else {
+    setStatus(parsed.left, parsed.right ?? '');
+    const right = parsed.right;
+    void Promise.all([
+      translateOut(parsed.left),
+      right !== undefined ? translateOut(right) : Promise.resolve(''),
+    ]).then(([l, r]) => setStatus(l, r));
+  }
+}
+
+/** ゲーム指定の背景色を端末全体に適用し、文字背景・余白を統一する (Z-machine の
+ *  「背景色設定」= 文字背景 = 画面塗り。window 背景は GlkOte に来ないので文字
+ *  スパンの背景色から拾う) */
+let gameBg: string | undefined;
+function applyGameBackground(bg: string | undefined): void {
+  if (bg === undefined || bg === gameBg) return;
+  gameBg = bg;
+  terminal.style.backgroundColor = bg;
+  document.body.style.backgroundColor = bg;
+}
+
+/** out の rich/statusStyle から本文の背景色を拾って端末全体に適用する */
+function applyBackgroundFrom(out: { rich?: StyledBlock[]; statusStyle?: SpanStyle }): void {
+  let bg: string | undefined;
+  for (const block of out.rich ?? []) {
+    for (const line of block.lines) {
+      for (const span of line.spans) {
+        // reverse は前景/背景が入れ替わるので地色判定から除外
+        if (span.style?.bg !== undefined && span.style.reverse !== true) {
+          bg = span.style.bg;
+          break;
+        }
+      }
+      if (bg !== undefined) break;
+    }
+    if (bg !== undefined) break;
+  }
+  applyGameBackground(bg);
 }
 
 async function translateOut(body: string): Promise<string> {
@@ -114,9 +301,89 @@ async function renderGameText(body: string, statusLineRaw?: string): Promise<str
   showStatus(statusLineRaw);
   if (body.trim() === '') return '';
   const ja = await translateOut(body);
-  print('', ja);
+  for (const chunk of settings.classicMode ? splitForPaging(ja, CLASSIC_COLS, classicPageLines()) : [ja]) {
+    await pageGate(chunk);
+    print('', chunk);
+  }
   if (settings.showRaw && ja !== body) print('raw', body);
   return ja;
+}
+
+/**
+ * 装飾付き出力の描画 (Lv1): grid ブロックは quote box として、buffer 段落は
+ * 段落一様装飾を訳文に対応付けて描画する。rich が無いエンジンは従来描画。
+ * 戻り値は表示した訳文 (メニュー検出やセッション履歴は従来どおり body を使う)。
+ */
+async function renderRichOutput(out: {
+  body: string;
+  statusLine?: string;
+  statusStyle?: SpanStyle;
+  rich?: StyledBlock[];
+  cleared?: boolean;
+}): Promise<string> {
+  // ゲームの画面クリア要求を honor (クラシック=実クリア / モダン=区切り線)
+  if (out.cleared === true) honorClear();
+  applyBackgroundFrom(out); // ゲーム背景色を端末全体に統一
+  showStatus(out.statusLine, out.statusStyle);
+  if (out.rich === undefined) {
+    return renderGameText(out.body);
+  }
+  const grid = out.rich.find((b) => b.kind === 'grid');
+  const para = out.rich.find((b) => b.kind === 'para');
+  let shown = '';
+  if (grid !== undefined) {
+    const plain = gridPlainText(grid);
+    if (plain !== '') {
+      const ja = await translateOut(plain);
+      await pageGate(ja);
+      printGridBox(ja, uniformStyle(grid.lines));
+      shown += ja;
+    }
+  }
+  if (para !== undefined && para.lines.some((l) => l.spans.map((s) => s.text).join('').trim() !== '')) {
+    // grid (quote box) の後に本文が続くなら間に空き 1 行
+    if (shown !== '') {
+      await pageGate('');
+      print('', '');
+    }
+    // 段落別装飾が取れない段落も、本文全体の既定装飾 (ghosts は黒背景/白文字) を当てる
+    shown += await printBodyParagraphs(para.lines, uniformStyle(para.lines));
+  }
+  if (settings.showRaw && out.rich.length > 0) printRawRich(out.rich);
+  return shown;
+}
+
+/**
+ * 本文行を描画する (地の文・会話セリフ共通経路)。
+ * **ゲーム由来の改行・空行を一切集約せず完全保持する** (splitBlocks):
+ * - 段落ブロック (連続非空行) はまとめて翻訳 → 段落装飾 + 80 桁 wrap で表示
+ * - 空行はそのまま空行として出力 (連続空行は連続したまま = 演出の空き 2 行等を再現)
+ * wrap (右端 80 桁の折返し) だけは別途行う — 明示的な改行・空行はいじらない。
+ */
+async function printBodyParagraphs(
+  lines: StyledLine[],
+  fallbackStyle?: SpanStyle,
+): Promise<string> {
+  let shown = '';
+  for (const block of splitBlocks(lines)) {
+    if (block.blank) {
+      await pageGate('');
+      print('', ''); // 空行をそのまま 1 行出す (集約しない)
+      shown += '\n';
+      continue;
+    }
+    const plain = block.lines.map((l) => l.spans.map((s) => s.text).join('')).join('\n');
+    const ja = await translateOut(plain);
+    const style = uniformStyle(block.lines) ?? fallbackStyle;
+    for (const chunk of settings.classicMode
+      ? splitForPaging(ja, CLASSIC_COLS, classicPageLines())
+      : [ja]) {
+      await pageGate(chunk);
+      printStyledPara(chunk, style);
+    }
+    shown += ja;
+  }
+  return shown;
 }
 
 // ---- メニュー UI ----
@@ -169,15 +436,21 @@ function showQuestionChoices(): void {
  * 個別翻訳はキャッシュされるので 2 回目以降は安定かつ即時。
  */
 async function presentMenu(
-  out: { body: string; statusLine?: string },
+  out: { body: string; statusLine?: string; statusStyle?: SpanStyle; rich?: StyledBlock[] },
   spec: MenuSpec,
 ): Promise<void> {
-  showStatus(out.statusLine);
+  applyBackgroundFrom(out);
+  showStatus(out.statusLine, out.statusStyle);
+  // 会話セリフ (narrative) も地の文と同じ既定装飾 (ghosts は黒背景/白文字) を当てる。
+  // rich の para から一様装飾を取得 (会話は一様) し fallback とする
+  const para = out.rich?.find((b) => b.kind === 'para');
+  const bodyStyle = para !== undefined ? uniformStyle(para.lines) : undefined;
   const { narrative, headerLine } = splitMenuBlock(out.body, spec);
-  if (narrative !== '') {
-    const ja = await translateOut(narrative);
-    print('', ja);
-    if (settings.showRaw && ja !== narrative) print('raw', narrative);
+  if (narrative.trim() !== '') {
+    // narrative の改行・空行を保持したまま地の文と共通経路へ (各行を StyledLine 化)
+    const narrLines: StyledLine[] = narrative.split('\n').map((t) => ({ spans: [{ text: t }] }));
+    await printBodyParagraphs(narrLines, bodyStyle);
+    if (settings.showRaw) print('raw', narrative);
   }
   const cleanup = (t: string) => t.trim().replace(/^[「『"']+|[」』"'。]+$/g, '');
   const headerJa = headerLine !== undefined ? cleanup(await translateOut(headerLine)) : '';
@@ -187,11 +460,14 @@ async function presentMenu(
     label: cleanup(labelsJa[i] ?? '') || c.label,
   }));
   const menuLines = [
+    ...(narrative !== '' ? [''] : []), // セリフとメニューの間に空き 1 行
     ...(headerJa !== '' ? [headerJa] : []),
     ...labeled.map((c) => `  ${c.key}: ${c.label}`),
     ...(spec.enterEnds ? ['  (空 Enter: 会話を終える)'] : []),
   ];
-  print('', menuLines.join('\n'));
+  const menuText = menuLines.join('\n');
+  await pageGate(menuText);
+  printStyledPara(menuText, bodyStyle); // メニューも本文と同じ地色
   if (settings.showRaw) {
     print('raw', [headerLine ?? '', ...spec.choices.map((c) => `  ${c.key}: ${c.label}`)].filter((l) => l !== '').join('\n'));
   }
@@ -203,13 +479,15 @@ async function presentOutput(out: {
   body: string;
   kind: string;
   statusLine?: string;
+  statusStyle?: SpanStyle;
+  rich?: StyledBlock[];
 }): Promise<void> {
   const spec = out.kind !== 'gameover' ? detectMenu(out.body) : undefined;
   if (spec !== undefined) {
     await presentMenu(out, spec);
     return;
   }
-  await renderGameText(out.body, out.statusLine);
+  await renderRichOutput(out);
   clearChoices();
   if (out.kind === 'query' && REAL_QUESTION_RE.test(out.body.trimEnd())) {
     showQuestionChoices();
@@ -225,6 +503,7 @@ async function presentOutput(out: {
 async function submitMenuSelection(key: string): Promise<void> {
   if (engine === undefined || session === undefined) return;
   setBusy(true);
+  pager.reset();
   clearChoices();
   try {
     print('cmd', `> ${key === '' ? '(会話を終える)' : key}`);
@@ -241,6 +520,7 @@ async function submitMenuSelection(key: string): Promise<void> {
 async function submitDirect(command: string): Promise<void> {
   if (engine === undefined || session === undefined) return;
   setBusy(true);
+  pager.reset();
   clearChoices();
   try {
     print('cmd', `> ${command}`);
@@ -264,6 +544,7 @@ async function handleUserInput(ja: string): Promise<void> {
     return;
   }
   setBusy(true);
+  pager.reset();
   print('user', ja);
   const thinking = print('thinking', '考え中…');
   try {
@@ -297,7 +578,7 @@ async function handleUserInput(ja: string): Promise<void> {
     for (const r of turn.results) {
       print('cmd', `> ${r.command}${r.corrected ? ' (自己修正)' : ''}`);
       if (r === lastResult) await presentOutput(r.output);
-      else await renderGameText(r.output.body, r.output.statusLine);
+      else await renderRichOutput(r.output);
     }
     if (turn.error !== undefined) {
       const isJa = /[^\x00-\x7f]/.test(turn.error);
@@ -316,7 +597,13 @@ async function handleUserInput(ja: string): Promise<void> {
 async function startGame(data: Uint8Array, filename: string): Promise<void> {
   setBusy(true);
   terminal.innerHTML = '';
+  terminal.classList.remove('welcoming');
   clearChoices();
+  // ゲーム切替: 背景色・ステータスのキャッシュをリセット
+  gameBg = undefined;
+  lastStatusRaw = undefined;
+  terminal.style.backgroundColor = '';
+  document.body.style.backgroundColor = '';
   gameOver = false;
   try {
     const info = analyzeStory(data, filename);
@@ -363,15 +650,20 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       contextTurns: settings.contextTurns,
     }, logger);
 
-    print('system', `${filename} を起動中…`);
+    const loading = print('system', `${filename} を起動中…`);
+    pager.reset();
     let out = await engine.start();
-    // 冒頭の pause/引用画面: メニュー・真の質問でなければ表示して自動続行
+    loading.remove(); // 起動完了 → ローディング表示を消す
+    // 冒頭の pause/引用画面: メニュー・真の質問でなければ表示して進める。
+    // ゲームのキー入力待ちは演出意図なので**両モードで honor** し、ユーザーの
+    // キー入力を待つ (モダン/クラシックの差はレイアウトと More 送りだけ)。
     while (
       out.kind === 'query' &&
       detectMenu(out.body) === undefined &&
       !REAL_QUESTION_RE.test(out.body.trimEnd())
     ) {
-      await renderGameText(out.body, out.statusLine);
+      await renderRichOutput(out);
+      await waitForContinue('—— キーを押して続行 ——');
       out = await engine.send('');
     }
     session.pushGameOutput(out.body);
@@ -489,7 +781,22 @@ function wireSettings(): void {
   });
 }
 
+function applyLayoutMode(): void {
+  document.body.classList.toggle('classic', settings.classicMode);
+  document.body.classList.toggle('modern', !settings.classicMode);
+}
+
 function wireTopbar(): void {
+  const layoutButton = $('btn-layout');
+  applyLayoutMode();
+  layoutButton.classList.toggle('active', settings.classicMode);
+  layoutButton.addEventListener('click', () => {
+    settings.classicMode = !settings.classicMode;
+    layoutButton.classList.toggle('active', settings.classicMode);
+    applyLayoutMode();
+    saveSettings(settings);
+  });
+
   const rawButton = $('btn-raw');
   rawButton.classList.toggle('active', settings.showRaw);
   rawButton.addEventListener('click', () => {
@@ -499,6 +806,27 @@ function wireTopbar(): void {
   });
   $('btn-save').addEventListener('click', () => void submitDirect('save'));
   $('btn-restore').addEventListener('click', () => void submitDirect('restore'));
+  // 「開く」は設定内のボタンと共通の file-input を起動 (change は wireSettings 配線済み)
+  $('btn-open-top').addEventListener('click', () => $<HTMLInputElement>('file-input').click());
+
+  // ☰ ハンバーガーメニューの開閉。項目クリックで閉じ、メニュー外クリックでも閉じる
+  const menuButton = $('btn-menu');
+  const menu = $('topbar-menu');
+  const setMenu = (open: boolean) => {
+    menu.hidden = !open;
+    menuButton.setAttribute('aria-expanded', String(open));
+  };
+  menuButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setMenu(menu.hidden);
+  });
+  // メニュー内ボタンを押したら各機能 (既存リスナ) 実行後にメニューを閉じる
+  for (const item of menu.querySelectorAll('button')) {
+    item.addEventListener('click', () => setMenu(false));
+  }
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !menu.contains(e.target as Node) && e.target !== menuButton) setMenu(false);
+  });
 }
 
 // ---- 起動 ----
@@ -510,10 +838,28 @@ form.addEventListener('submit', (e) => {
   void handleUserInput(value);
 });
 
+/** 起動時/ゲーム未読み込み時のウェルカム画面 (ロゴ + サブタイトル + 操作ヒント) */
+function showWelcome(): void {
+  terminal.innerHTML = '';
+  terminal.classList.add('welcoming');
+  const wrap = document.createElement('div');
+  wrap.className = 'welcome';
+  const logo = document.createElement('p');
+  logo.className = 'logo';
+  logo.textContent = 'yominterp';
+  const subtitle = document.createElement('p');
+  subtitle.className = 'subtitle';
+  subtitle.textContent = '英語のインタラクティブフィクションを日本語で遊ぶ';
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent = '右上の ☰ メニュー →「開く」でゲームを読み込み、「設定」で LLM 接続先を指定してください';
+  wrap.append(logo, subtitle, hint);
+  terminal.appendChild(wrap);
+}
+
 wireSettings();
 wireTopbar();
-print('system', 'yominterp — 英語のインタラクティブフィクションを日本語で遊ぶ');
-print('system', '右上の「設定」から LLM 接続先を設定し、ゲームを読み込んでください');
+showWelcome();
 
 /**
  * 自動検証モード (VITE_AUTOTEST=<collector URL> で起動した時のみ)。
@@ -567,7 +913,6 @@ async function runAutotest(collector: string): Promise<void> {
 
 void (async () => {
   await initNativeFetch();
-  if (isTauri) print('system', 'デスクトップ版: ローカル LLM へ直結します (CORS/proxy 設定は不要)');
   const autotest = (import.meta.env.VITE_AUTOTEST as string | undefined) ?? '';
   if (autotest !== '') {
     await runAutotest(autotest);

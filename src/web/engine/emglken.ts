@@ -12,6 +12,9 @@
 import {
   type EngineOutput,
   type OutputKind,
+  type SpanStyle,
+  type StyledBlock,
+  type StyledLine,
   type ZEngine,
   looksGameOver,
   parseStatusLine,
@@ -41,27 +44,41 @@ export interface EmglkenEngineOptions {
 /** settle 内容から EngineOutput を構築する (純関数・テスト可能) */
 export function settledToOutput(settled: SettledUpdate, sentCommand: string | undefined): EngineOutput {
   // buffer 行の整形: コマンド echo と末尾のプロンプト残骸を除去
+  // (rich 用に「残した行の範囲」も index で並行追跡する)
   const lines = [...settled.bufferLines];
-  while (lines.length > 0 && lines[0]!.trim() === '') lines.shift();
+  let keepStart = 0;
+  let keepEnd = settled.bufferLines.length; // exclusive
+  while (lines.length > 0 && lines[0]!.trim() === '') {
+    lines.shift();
+    keepStart++;
+  }
   if (
     sentCommand !== undefined &&
     lines.length > 0 &&
     lines[0]!.trim().toLowerCase() === sentCommand.trim().toLowerCase()
   ) {
     lines.shift(); // 入力 echo
+    keepStart++;
   }
   while (lines.length > 0) {
     const last = lines[lines.length - 1]!.trim();
-    if (last === '' || last === '>') lines.pop();
-    else break;
+    if (last === '' || last === '>') {
+      lines.pop();
+      keepEnd--;
+    } else break;
   }
   let body = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const richParaLines: StyledLine[] = settled.richBuffer.slice(keepStart, keepEnd);
 
   // 拡大 grid (quote 画面・PunyInform 会話メニュー等) は本文の一部として扱う。
   // メニューは buffer の台詞と同時に grid 再描画されるため、buffer が
   // 非空でも grid を先頭に連結する (dfrotz のレイアウトと同順)。
   // ただし grid 先頭に再描画されるステータス行は本文に混ぜず statusLine へ分離する
   let statusLine: string | undefined;
+  let statusStyle: SpanStyle | undefined;
+  let richGridBlock: StyledBlock | undefined;
+  const styleOfStatusRow = (row: StyledLine | undefined): SpanStyle | undefined =>
+    row?.spans.find((sp) => sp.text.trim() !== '' && sp.style !== undefined)?.style;
   if (settled.gridHeight > 3 && settled.gridLines.length > 0) {
     const contentLines: string[] = [];
     for (const line of settled.gridLines) {
@@ -73,10 +90,30 @@ export function settledToOutput(settled: SettledUpdate, sentCommand: string | un
     }
     const gridText = contentLines.join('\n');
     if (gridText !== '') body = body === '' ? gridText : `${gridText}\n\n${body}`;
+    // rich: ステータス行を除いた grid を桁/空白保持のままブロックに
+    const richRows = settled.richGrid.filter((row) => {
+      const text = row.spans.map((sp) => sp.text).join('');
+      if (statusLine !== undefined && text === statusLine) {
+        statusStyle ??= styleOfStatusRow(row);
+        return false;
+      }
+      return true;
+    });
+    // 前後の完全空行は落とす (中間の空行は box の見た目として保持)
+    while (richRows.length > 0 && richRows[0]!.spans.every((sp) => sp.text.trim() === '')) richRows.shift();
+    while (
+      richRows.length > 0 &&
+      richRows[richRows.length - 1]!.spans.every((sp) => sp.text.trim() === '')
+    )
+      richRows.pop();
+    if (richRows.length > 0) richGridBlock = { kind: 'grid', lines: richRows };
   } else if (settled.gridHeight > 0) {
     // 小さい grid (≤3 行) はステータス行
     const candidate = settled.gridLines.find((l) => parseStatusLine(l) !== undefined);
     statusLine = candidate ?? settled.gridLines[0];
+    statusStyle = styleOfStatusRow(
+      settled.richGrid.find((row) => row.spans.map((sp) => sp.text).join('') === statusLine),
+    );
   }
 
   let kind: OutputKind;
@@ -95,6 +132,12 @@ export function settledToOutput(settled: SettledUpdate, sentCommand: string | un
   const out: EngineOutput = { raw: body, body, kind };
   if (statusLine !== undefined) out.statusLine = statusLine.trimEnd();
   if (request !== undefined) out.request = request;
+  if (statusStyle !== undefined) out.statusStyle = statusStyle;
+  if (settled.cleared) out.cleared = true;
+  const rich: StyledBlock[] = [];
+  if (richGridBlock !== undefined) rich.push(richGridBlock);
+  if (richParaLines.length > 0) rich.push({ kind: 'para', lines: richParaLines });
+  if (rich.length > 0) out.rich = rich;
   return out;
 }
 

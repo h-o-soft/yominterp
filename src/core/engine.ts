@@ -23,6 +23,69 @@ export interface EngineOutput {
    * dfrotz エンジンは設定しない (kind からの推測のみ)。
    */
   request?: 'line' | 'char';
+  /**
+   * 装飾付きの構造化テキスト (分かるエンジンのみ。Glk 系はプロトコルが運ぶ)。
+   * body と同じ内容の装飾版で、表示専用 — 翻訳・比較・メニュー検出は従来どおり
+   * body (プレーン) を使う。dfrotz エンジンは設定しない。
+   */
+  rich?: StyledBlock[];
+  /** ステータス行の装飾 (ゲーム指定の色/反転。例: ghosts は赤の反転バー) */
+  statusStyle?: SpanStyle;
+  /**
+   * この出力の前にゲームが画面クリアを要求した (Glk buffer window の clear)。
+   * クラシック表示モードはこれを honor して表示をクリアする。
+   */
+  cleared?: boolean;
+}
+
+/** スパンの解決済み装飾 (Style_* マップ + css_styles を合成したもの) */
+export interface SpanStyle {
+  bold?: boolean;
+  italic?: boolean;
+  monospace?: boolean;
+  reverse?: boolean;
+  /** CSS color 値 (例: '#EF0000') */
+  fg?: string;
+  bg?: string;
+  /** Glk スタイル名 (subheader/emphasized/input 等。CSS クラス付与用) */
+  styleName?: string;
+}
+
+export interface StyledSpan {
+  text: string;
+  style?: SpanStyle;
+}
+
+export interface StyledLine {
+  spans: StyledSpan[];
+}
+
+/**
+ * 表示ブロック。
+ * - 'grid': 上部ウィンドウ由来 (quote box 等)。固定ピッチ・桁/空白をそのまま保持
+ * - 'para': buffer 由来の段落 (1 行 = 1 段落)
+ */
+export interface StyledBlock {
+  kind: 'grid' | 'para';
+  lines: StyledLine[];
+}
+
+/** 行内の全スパンが同一装飾ならそれを返す (段落一様装飾の判定用) */
+export function uniformStyle(lines: StyledLine[]): SpanStyle | undefined {
+  let found: SpanStyle | undefined;
+  for (const line of lines) {
+    for (const span of line.spans) {
+      if (span.text.trim() === '') continue; // 空白のみのスパンは装飾判定から除外
+      const s = span.style ?? {};
+      if (found === undefined) {
+        found = s;
+      } else if (JSON.stringify(found) !== JSON.stringify(s)) {
+        return undefined;
+      }
+    }
+  }
+  // 無装飾 ({} のみ) は undefined に正規化
+  return found !== undefined && Object.keys(found).length > 0 ? found : undefined;
 }
 
 export interface ZEngine {
@@ -51,6 +114,25 @@ export function parseStatusLine(line: string): StatusInfo | undefined {
   const m = STATUS_LINE_RE.exec(line);
   if (!m) return undefined;
   return { room: m[1]!.trim(), score: Number(m[2]), moves: Number(m[3]) };
+}
+
+/**
+ * ステータス行を表示用に分解する (翻訳・整形のため)。
+ * - Score/Moves 形式 (ghosts 等) → { room, score, moves }
+ * - 「左 …(2+空白)… 右」形式 (anchorhead の "場所名 ... day one") → { left, right }
+ * - それ以外 → { left }
+ * room/left/right は翻訳対象、score/moves はそのまま。
+ */
+export type StatusParts =
+  | { room: string; score: number; moves: number }
+  | { left: string; right?: string };
+
+export function parseStatusGeneric(line: string): StatusParts {
+  const sm = parseStatusLine(line);
+  if (sm !== undefined) return { room: sm.room, score: sm.score, moves: sm.moves };
+  const m = /^(.+?)\s{2,}(.+)$/.exec(line.trim());
+  if (m !== null) return { left: m[1]!.trim(), right: m[2]!.trim() };
+  return { left: line.trim() };
 }
 
 /**

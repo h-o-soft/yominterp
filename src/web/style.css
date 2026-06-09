@@ -14,19 +14,44 @@ body {
   color: var(--fg);
   font-family: "SF Mono", "Menlo", "Consolas", "Noto Sans Mono CJK JP", monospace;
 }
-#app { display: flex; flex-direction: column; height: 100%; max-width: 60rem; margin: 0 auto; }
+#app { position: relative; display: flex; flex-direction: column; height: 100%; margin: 0 auto; max-width: 84ch; }
 
 #topbar {
   display: flex; justify-content: space-between; align-items: center;
   background: var(--status-bg); padding: 0.3rem 0.8rem; gap: 0.5rem;
   white-space: pre; overflow: hidden;
 }
-#status-line { overflow: hidden; text-overflow: ellipsis; color: var(--accent); }
-#topbar button {
-  background: none; border: 1px solid var(--dim); color: var(--fg);
-  font: inherit; font-size: 0.8rem; padding: 0.1rem 0.5rem; cursor: pointer; border-radius: 3px;
+/* ステータスラインは上部バー全幅。左=場所名 / 右=得点/手数・日付等を右寄せ */
+#status-line {
+  color: var(--accent); flex: 1; display: flex; justify-content: space-between;
+  gap: 1.5rem; white-space: pre; overflow: hidden;
 }
-#topbar button.active { border-color: var(--accent); color: var(--accent); }
+#status-left { overflow: hidden; text-overflow: ellipsis; }
+#status-right { flex-shrink: 0; }
+/* ☰ ハンバーガーは下部入力バーに置く (上部のステータスと衝突させない)。
+   自前の不透明な地色で常に可読 */
+#btn-menu {
+  background: #1d2a22; border: 1px solid var(--dim); color: var(--fg);
+  font: inherit; font-size: 1.05rem; line-height: 1; padding: 0.2rem 0.55rem;
+  cursor: pointer; border-radius: 3px; flex-shrink: 0;
+}
+#btn-menu:hover { border-color: var(--accent); }
+
+/* ☰ メニュー (下部の☰の上に開くドロップアップ) */
+#topbar-menu {
+  position: absolute; bottom: 3rem; left: 0.5rem; z-index: 20;
+  display: flex; flex-direction: column; min-width: 13rem;
+  background: #1d2a22; border: 1px solid var(--dim); border-radius: 5px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); overflow: hidden;
+}
+#topbar-menu[hidden] { display: none; }
+#topbar-menu button {
+  background: none; border: none; border-bottom: 1px solid #2a3a30;
+  color: var(--fg); font: inherit; text-align: left; padding: 0.5rem 0.9rem; cursor: pointer;
+}
+#topbar-menu button:last-child { border-bottom: none; }
+#topbar-menu button:hover { background: var(--status-bg); }
+#topbar-menu button.active { color: var(--accent); }
 
 #terminal { flex: 1; overflow-y: auto; padding: 1rem 0.8rem; line-height: 1.6; }
 #terminal p { margin: 0 0 0.7rem; white-space: pre-wrap; }
@@ -72,3 +97,107 @@ dialog button { font: inherit; cursor: pointer; }
 #test-result { margin-left: 0.5rem; }
 #test-result.ok { color: var(--accent); }
 #test-result.ng { color: var(--warn); }
+
+/* ==== テキスト装飾 (Lv1/Lv2) ==== */
+.s-bold { font-weight: bold; }
+.s-italic { font-style: italic; }
+.s-mono { font-family: inherit; }
+.s-subheader { font-weight: bold; }
+.s-emphasized { font-style: italic; }
+.s-alert { font-weight: bold; font-style: italic; }
+.s-note { font-style: italic; }
+.s-input { opacity: 0.9; }
+/* 装飾段落は block (inline-block だと段落が横に並んで右へはみ出す)。
+   背景色は行ボックス全幅に乗る = 端末らしい全幅の地色 */
+#terminal p.styled { padding: 0 0.3rem; display: block; }
+
+/* quote box (上部 grid 由来): 固定ピッチ・ブロック表示 */
+#terminal .gridbox {
+  display: block;
+  white-space: pre-wrap;
+  margin: 0.8rem auto;
+  padding: 0.8rem 1.2rem;
+  width: fit-content;
+  max-width: 100%;
+  text-align: left;
+  border-radius: 2px;
+  line-height: 1.5;
+}
+#terminal .gridbox.raw { white-space: pre; overflow-x: auto; }
+
+/* ステータスバーのゲーム指定色は inline style で上書きされる */
+
+/* ==== クラシック端末モード (既定) — 古典端末 80 桁 × 本文 24 行 ==== */
+/* 横 80 桁・縦 24 行の枠を固く守る。ウィンドウを縦に伸ばしても本文枠は 24 行の
+   まま、余りは枠外 (上下) の余白になる (justify-content)。
+   ステータスは上部バー、入力欄は下部 = 枠外 (本文領域 = 24 行)。 */
+body.classic { --term-font: 15px; --term-lh: 1.55; }
+body.classic #app {
+  /* content 80 桁 + #terminal の左右 padding (0.8rem×2) */
+  max-width: calc(80ch + 1.6rem);
+  justify-content: center;
+}
+body.classic #terminal {
+  font-size: var(--term-font);
+  line-height: var(--term-lh);
+  /* 本文 24 行 (line-height 基準) + 上下 padding。flex: 0 1 auto = 拡大せず・縮小可 */
+  flex: 0 1 auto;
+  height: calc(24 * var(--term-lh) * var(--term-font) + 1.6rem);
+  max-height: 100%;
+  /* 80 桁で wrap 済みのテキストを出すので、CSS では折り返さない (pre) */
+  white-space: pre;
+  padding: 0.8rem;
+}
+/* クラシックの本文段落は折り返さない (wrapToLines が表示行を確定済み)。
+   段落マージンは 0 — 段落間の空きは出力側が空行 (1 表示行) で入れ、ページ送りの
+   行数計算と実表示を一致させる (margin が行数計算からズレる原因だった) */
+body.classic #terminal p { white-space: pre; margin: 0; }
+body.classic #terminal .gridbox { white-space: pre; margin: 0.4rem 0; }
+body.classic #topbar {
+  border-bottom: 1px solid #2a3a30;
+}
+/* モダン表示 (トグルで切替): 余白広めの可変幅・縦はウィンドウいっぱい */
+body.modern #app { max-width: 60rem; justify-content: flex-start; }
+body.modern #terminal { flex: 1; height: auto; }
+body.modern #terminal p { max-width: 56rem; }
+
+/* ==== ウェルカム画面 (起動時・ゲーム未読み込み) ==== */
+#terminal.welcoming { display: flex; flex-direction: column; justify-content: center; }
+#terminal .welcome {
+  text-align: center;
+  padding: 3rem 1rem 1rem;
+  margin: auto 0;
+}
+#terminal .welcome .logo {
+  font-size: 2.6rem;
+  font-weight: bold;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  margin: 0;
+}
+#terminal .welcome .subtitle {
+  color: var(--fg);
+  margin-top: 0.6rem;
+  font-size: 1rem;
+}
+#terminal .welcome .hint {
+  color: var(--dim);
+  margin-top: 2rem;
+  font-size: 0.9rem;
+  white-space: normal;
+}
+
+/* [More] / キー待ちの続行バー */
+#terminal .more-bar {
+  display: block;
+  width: 100%;
+  margin: 0.6rem 0;
+  padding: 0.3rem;
+  background: var(--status-bg);
+  color: var(--accent);
+  border: 1px dashed var(--dim);
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+}

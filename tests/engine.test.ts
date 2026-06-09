@@ -73,3 +73,41 @@ describe('looksGameOver', () => {
     expect(looksGameOver('You open the door. It creaks.')).toBe(false);
   });
 });
+
+describe('uniformStyle (段落一様装飾の判定)', () => {
+  it('全スパン同一装飾ならそれを返す (空白のみスパンは無視)', async () => {
+    const { uniformStyle } = await import('../src/core/engine.js');
+    const style = { reverse: true, fg: '#FFF' };
+    expect(
+      uniformStyle([
+        { spans: [{ text: '  ' }, { text: 'quote', style }, { text: '  ' }] },
+        { spans: [{ text: 'line 2', style }] },
+      ]),
+    ).toEqual(style);
+  });
+  it('装飾が混在すれば undefined', async () => {
+    const { uniformStyle } = await import('../src/core/engine.js');
+    expect(
+      uniformStyle([
+        { spans: [{ text: 'a', style: { bold: true } }, { text: 'b', style: { italic: true } }] },
+      ]),
+    ).toBeUndefined();
+  });
+});
+
+describe('parseStatusGeneric (汎用ステータス分解)', () => {
+  it('Score/Moves 形式 (ghosts)', async () => {
+    const { parseStatusGeneric } = await import('../src/core/engine.js');
+    const r = parseStatusGeneric(' Vestibule                              Score: 5     Moves: 1');
+    expect(r).toEqual({ room: 'Vestibule', score: 5, moves: 1 });
+  });
+  it('「左 … 右」形式 (anchorhead の場所名 + 右寄せ day one)', async () => {
+    const { parseStatusGeneric } = await import('../src/core/engine.js');
+    const r = parseStatusGeneric(' Outside the Real Estate Office                      day one');
+    expect(r).toEqual({ left: 'Outside the Real Estate Office', right: 'day one' });
+  });
+  it('右寄せ情報なし (単独場所名)', async () => {
+    const { parseStatusGeneric } = await import('../src/core/engine.js');
+    expect(parseStatusGeneric('  Dungeon Cell  ')).toEqual({ left: 'Dungeon Cell' });
+  });
+});

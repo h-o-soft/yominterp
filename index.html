@@ -15,19 +15,27 @@
   </head>
   <body>
     <div id="app">
+      <!-- 上部バーはゲームのステータスライン専用 (場所名 + 右寄せ情報を省略せず全幅で)。
+           アプリ操作の☰メニューは下部 (入力バー) に置き、ステータスと衝突させない -->
       <header id="topbar">
-        <span id="status-line" title="ステータス行"></span>
-        <span id="topbar-buttons">
-          <button id="btn-raw" title="英語原文の表示を切り替え">原文</button>
-          <button id="btn-save" title="セーブ">保存</button>
-          <button id="btn-restore" title="ロード">再開</button>
-          <button id="btn-settings" title="設定">設定</button>
-        </span>
+        <div id="status-line" title="ステータス行 (場所名・得点・手数 等)">
+          <span id="status-left"></span>
+          <span id="status-right"></span>
+        </div>
       </header>
+      <nav id="topbar-menu" hidden aria-label="メニュー">
+        <button id="btn-open-top">📂 開く…</button>
+        <button id="btn-raw">原文の表示</button>
+        <button id="btn-layout">表示モード (クラシック/モダン)</button>
+        <button id="btn-save">セーブ</button>
+        <button id="btn-restore">ロード</button>
+        <button id="btn-settings">設定…</button>
+      </nav>
       <main id="terminal" aria-live="polite"></main>
       <footer id="inputbar">
         <div id="choices" hidden></div>
         <form id="input-form">
+          <button id="btn-menu" type="button" class="hamburger" title="メニュー" aria-haspopup="true" aria-expanded="false">☰</button>
           <span id="prompt-mark">&gt;</span>
           <input id="input" autocomplete="off" placeholder="日本語で指示してください" disabled />
           <button id="btn-send" disabled>送信</button>
