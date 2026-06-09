@@ -101,7 +101,9 @@ dialog button { font: inherit; cursor: pointer; }
 .s-alert { font-weight: bold; font-style: italic; }
 .s-note { font-style: italic; }
 .s-input { opacity: 0.9; }
-#terminal p.styled { padding: 0 0.3rem; display: inline-block; }
+/* 装飾段落は block (inline-block だと段落が横に並んで右へはみ出す)。
+   背景色は行ボックス全幅に乗る = 端末らしい全幅の地色 */
+#terminal p.styled { padding: 0 0.3rem; display: block; }
 
 /* quote box (上部 grid 由来): 固定ピッチ・ブロック表示 */
 #terminal .gridbox {

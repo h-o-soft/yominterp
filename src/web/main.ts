@@ -284,37 +284,54 @@ async function renderRichOutput(out: {
     }
   }
   if (para !== undefined) {
-    const paraLines: StyledLine[] = para.lines;
-    const plain = paraLines
-      .map((l) => l.spans.map((sp) => sp.text).join(''))
-      .join('\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-    if (plain !== '') {
-      const ja = await translateOut(plain);
+    const ja = await translateOut(
+      para.lines
+        .map((l) => l.spans.map((sp) => sp.text).join(''))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim(),
+    );
+    if (ja !== '') {
       // grid (quote box) の後に本文が続くなら間に空き 1 行
       if (shown !== '') {
         await pageGate('');
         print('', '');
       }
-      const styledParas = styleTranslatedParagraphs(ja, paraLines);
-      for (const [pi, styled] of styledParas.entries()) {
-        // 段落間の空き 1 行 (クラシックは p margin 0 なので明示的な空行で区切る)。
-        // この 1 行もページ送りに計上し、行数計算と実表示を一致させる
-        if (pi > 0) {
-          await pageGate('');
-          print('', '');
-        }
-        for (const chunk of settings.classicMode ? splitForPaging(styled.text, CLASSIC_COLS, classicPageLines()) : [styled.text]) {
-          await pageGate(chunk);
-          printStyledPara(chunk, styled.style);
-        }
-      }
+      // 段落別装飾が取れない段落も、本文全体の既定装飾 (ghosts は黒背景/白文字) を当てる
+      await printBodyParagraphs(ja, para.lines, uniformStyle(para.lines));
       shown += (shown === '' ? '' : '\n\n') + ja;
     }
   }
   if (settings.showRaw && out.rich.length > 0) printRawRich(out.rich);
   return shown;
+}
+
+/**
+ * 翻訳済み本文を段落単位で描画する (地の文・会話セリフ共通経路)。
+ * - 段落ごとに装飾を対応付け (styleTranslatedParagraphs)、無ければ fallbackStyle
+ * - クラシックは 80 桁 wrap + [More] ページ送り、モダンは一括
+ * - 段落間は空き 1 行 (ページ送りに計上)
+ * 会話セリフもこの経路を通ることで、地の文と同じ wrap・背景/文字色が当たる。
+ */
+async function printBodyParagraphs(
+  ja: string,
+  styleLines: StyledLine[],
+  fallbackStyle?: SpanStyle,
+): Promise<void> {
+  const styledParas = styleTranslatedParagraphs(ja, styleLines);
+  for (const [pi, styled] of styledParas.entries()) {
+    if (pi > 0) {
+      await pageGate('');
+      print('', '');
+    }
+    const style = styled.style ?? fallbackStyle;
+    for (const chunk of settings.classicMode
+      ? splitForPaging(styled.text, CLASSIC_COLS, classicPageLines())
+      : [styled.text]) {
+      await pageGate(chunk);
+      printStyledPara(chunk, style);
+    }
+  }
 }
 
 // ---- メニュー UI ----
@@ -367,14 +384,19 @@ function showQuestionChoices(): void {
  * 個別翻訳はキャッシュされるので 2 回目以降は安定かつ即時。
  */
 async function presentMenu(
-  out: { body: string; statusLine?: string; statusStyle?: SpanStyle },
+  out: { body: string; statusLine?: string; statusStyle?: SpanStyle; rich?: StyledBlock[] },
   spec: MenuSpec,
 ): Promise<void> {
   showStatus(out.statusLine, out.statusStyle);
+  // 会話セリフ (narrative) も地の文と同じ既定装飾 (ghosts は黒背景/白文字) を当てる。
+  // rich の para から一様装飾を取得 (会話は一様) し fallback とする
+  const para = out.rich?.find((b) => b.kind === 'para');
+  const bodyStyle = para !== undefined ? uniformStyle(para.lines) : undefined;
   const { narrative, headerLine } = splitMenuBlock(out.body, spec);
   if (narrative !== '') {
     const ja = await translateOut(narrative);
-    print('', ja);
+    // 地の文と共通の wrap + 装飾経路を通す (会話が折り返されない・色が違う問題を解消)
+    await printBodyParagraphs(ja, [], bodyStyle);
     if (settings.showRaw && ja !== narrative) print('raw', narrative);
   }
   const cleanup = (t: string) => t.trim().replace(/^[「『"']+|[」』"'。]+$/g, '');
@@ -385,11 +407,14 @@ async function presentMenu(
     label: cleanup(labelsJa[i] ?? '') || c.label,
   }));
   const menuLines = [
+    ...(narrative !== '' ? [''] : []), // セリフとメニューの間に空き 1 行
     ...(headerJa !== '' ? [headerJa] : []),
     ...labeled.map((c) => `  ${c.key}: ${c.label}`),
     ...(spec.enterEnds ? ['  (空 Enter: 会話を終える)'] : []),
   ];
-  print('', menuLines.join('\n'));
+  const menuText = menuLines.join('\n');
+  await pageGate(menuText);
+  printStyledPara(menuText, bodyStyle); // メニューも本文と同じ地色
   if (settings.showRaw) {
     print('raw', [headerLine ?? '', ...spec.choices.map((c) => `  ${c.key}: ${c.label}`)].filter((l) => l !== '').join('\n'));
   }
