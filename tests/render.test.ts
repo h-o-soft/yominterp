@@ -204,3 +204,28 @@ describe('キー待ち/クリアのモード非依存契約', () => {
     expect(loop).not.toMatch(/if \(settings\.classicMode\)\s*\{\s*await waitForContinue/);
   });
 });
+
+describe('splitBlocks (改行・空行の完全保持)', () => {
+  const L = (t: string) => ({ spans: [{ text: t }] });
+  it('連続非空行を段落に、空行は1行ずつ個別ブロックにする', async () => {
+    const { splitBlocks } = await import('../src/web/ui/render.js');
+    // 段落 + 空行2つ + 段落 (ghosts のタイトル前演出)
+    const blocks = splitBlocks([L('作家の行き詰まり。'), L(''), L(''), L('ブラックウッド邸の亡霊たち')]);
+    expect(blocks.map((b) => b.blank)).toEqual([false, true, true, false]);
+    // 空行2つが2ブロックとして保持される (集約されない)
+    expect(blocks.filter((b) => b.blank)).toHaveLength(2);
+    expect(blocks[0]!.lines.map((l) => l.spans[0]!.text)).toEqual(['作家の行き詰まり。']);
+    expect(blocks[3]!.lines.map((l) => l.spans[0]!.text)).toEqual(['ブラックウッド邸の亡霊たち']);
+  });
+  it('複数行の段落は1ブロックにまとめる', async () => {
+    const { splitBlocks } = await import('../src/web/ui/render.js');
+    const blocks = splitBlocks([L('line A'), L('line B'), L(''), L('line C')]);
+    expect(blocks.map((b) => b.blank)).toEqual([false, true, false]);
+    expect(blocks[0]!.lines).toHaveLength(2);
+  });
+  it('空白のみの行も空行として扱う', async () => {
+    const { splitBlocks } = await import('../src/web/ui/render.js');
+    const blocks = splitBlocks([L('x'), L('   '), L('y')]);
+    expect(blocks.map((b) => b.blank)).toEqual([false, true, false]);
+  });
+});

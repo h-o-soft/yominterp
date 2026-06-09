@@ -127,6 +127,37 @@ export function gridPlainText(block: StyledBlock): string {
 }
 
 /**
+ * 本文行を「段落ブロック」と「空行」に分解する (改行・空行の完全保持用)。
+ * - 連続する非空行 = 1 段落ブロック (まとめて翻訳)
+ * - 空行は 1 行ずつ個別ブロック (連続空行はそのまま複数 = 空行数を保持)
+ * ゲームが出した改行・空行を一切集約せず再現するための土台。
+ */
+export interface BodyBlock {
+  blank: boolean;
+  lines: StyledLine[];
+}
+export function splitBlocks(lines: StyledLine[]): BodyBlock[] {
+  const out: BodyBlock[] = [];
+  let cur: StyledLine[] = [];
+  const flush = () => {
+    if (cur.length > 0) {
+      out.push({ blank: false, lines: cur });
+      cur = [];
+    }
+  };
+  for (const line of lines) {
+    if (line.spans.map((s) => s.text).join('').trim() === '') {
+      flush();
+      out.push({ blank: true, lines: [line] });
+    } else {
+      cur.push(line);
+    }
+  }
+  flush();
+  return out;
+}
+
+/**
  * クラシック端末の寸法定義 (古典端末 80x24)。
  * - 横 80 桁 (等幅・全角=2 桁)
  * - 本文表示領域 24 行 (ステータスは上部バー、入力欄は下部 = 枠外)

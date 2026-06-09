@@ -37,9 +37,9 @@ import {
   Pager,
   estimateLines,
   gridPlainText,
+  splitBlocks,
   splitForPaging,
   styleToCss,
-  styleTranslatedParagraphs,
   wrapToLines,
 } from './ui/render.js';
 import type { EngineOutput, SpanStyle, StyledBlock, StyledLine } from '../core/engine.js';
@@ -340,55 +340,50 @@ async function renderRichOutput(out: {
       shown += ja;
     }
   }
-  if (para !== undefined) {
-    const ja = await translateOut(
-      para.lines
-        .map((l) => l.spans.map((sp) => sp.text).join(''))
-        .join('\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim(),
-    );
-    if (ja !== '') {
-      // grid (quote box) の後に本文が続くなら間に空き 1 行
-      if (shown !== '') {
-        await pageGate('');
-        print('', '');
-      }
-      // 段落別装飾が取れない段落も、本文全体の既定装飾 (ghosts は黒背景/白文字) を当てる
-      await printBodyParagraphs(ja, para.lines, uniformStyle(para.lines));
-      shown += (shown === '' ? '' : '\n\n') + ja;
+  if (para !== undefined && para.lines.some((l) => l.spans.map((s) => s.text).join('').trim() !== '')) {
+    // grid (quote box) の後に本文が続くなら間に空き 1 行
+    if (shown !== '') {
+      await pageGate('');
+      print('', '');
     }
+    // 段落別装飾が取れない段落も、本文全体の既定装飾 (ghosts は黒背景/白文字) を当てる
+    shown += await printBodyParagraphs(para.lines, uniformStyle(para.lines));
   }
   if (settings.showRaw && out.rich.length > 0) printRawRich(out.rich);
   return shown;
 }
 
 /**
- * 翻訳済み本文を段落単位で描画する (地の文・会話セリフ共通経路)。
- * - 段落ごとに装飾を対応付け (styleTranslatedParagraphs)、無ければ fallbackStyle
- * - クラシックは 80 桁 wrap + [More] ページ送り、モダンは一括
- * - 段落間は空き 1 行 (ページ送りに計上)
- * 会話セリフもこの経路を通ることで、地の文と同じ wrap・背景/文字色が当たる。
+ * 本文行を描画する (地の文・会話セリフ共通経路)。
+ * **ゲーム由来の改行・空行を一切集約せず完全保持する** (splitBlocks):
+ * - 段落ブロック (連続非空行) はまとめて翻訳 → 段落装飾 + 80 桁 wrap で表示
+ * - 空行はそのまま空行として出力 (連続空行は連続したまま = 演出の空き 2 行等を再現)
+ * wrap (右端 80 桁の折返し) だけは別途行う — 明示的な改行・空行はいじらない。
  */
 async function printBodyParagraphs(
-  ja: string,
-  styleLines: StyledLine[],
+  lines: StyledLine[],
   fallbackStyle?: SpanStyle,
-): Promise<void> {
-  const styledParas = styleTranslatedParagraphs(ja, styleLines);
-  for (const [pi, styled] of styledParas.entries()) {
-    if (pi > 0) {
+): Promise<string> {
+  let shown = '';
+  for (const block of splitBlocks(lines)) {
+    if (block.blank) {
       await pageGate('');
-      print('', '');
+      print('', ''); // 空行をそのまま 1 行出す (集約しない)
+      shown += '\n';
+      continue;
     }
-    const style = styled.style ?? fallbackStyle;
+    const plain = block.lines.map((l) => l.spans.map((s) => s.text).join('')).join('\n');
+    const ja = await translateOut(plain);
+    const style = uniformStyle(block.lines) ?? fallbackStyle;
     for (const chunk of settings.classicMode
-      ? splitForPaging(styled.text, CLASSIC_COLS, classicPageLines())
-      : [styled.text]) {
+      ? splitForPaging(ja, CLASSIC_COLS, classicPageLines())
+      : [ja]) {
       await pageGate(chunk);
       printStyledPara(chunk, style);
     }
+    shown += ja;
   }
+  return shown;
 }
 
 // ---- メニュー UI ----
@@ -451,11 +446,11 @@ async function presentMenu(
   const para = out.rich?.find((b) => b.kind === 'para');
   const bodyStyle = para !== undefined ? uniformStyle(para.lines) : undefined;
   const { narrative, headerLine } = splitMenuBlock(out.body, spec);
-  if (narrative !== '') {
-    const ja = await translateOut(narrative);
-    // 地の文と共通の wrap + 装飾経路を通す (会話が折り返されない・色が違う問題を解消)
-    await printBodyParagraphs(ja, [], bodyStyle);
-    if (settings.showRaw && ja !== narrative) print('raw', narrative);
+  if (narrative.trim() !== '') {
+    // narrative の改行・空行を保持したまま地の文と共通経路へ (各行を StyledLine 化)
+    const narrLines: StyledLine[] = narrative.split('\n').map((t) => ({ spans: [{ text: t }] }));
+    await printBodyParagraphs(narrLines, bodyStyle);
+    if (settings.showRaw) print('raw', narrative);
   }
   const cleanup = (t: string) => t.trim().replace(/^[「『"']+|[」』"'。]+$/g, '');
   const headerJa = headerLine !== undefined ? cleanup(await translateOut(headerLine)) : '';
