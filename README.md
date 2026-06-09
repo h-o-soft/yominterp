@@ -1,75 +1,114 @@
 # yominterp
 
-英語のインタラクティブフィクション (Z-machine 製) を、**LLM 翻訳層を挟んで日本語で遊ぶ**ためのプロジェクト。
-読み: ヨミンタープ (yomin = Enchanter の「心を読む」呪文 + interp(reter))。
+**英語のインタラクティブフィクション (IF) を、日本語で遊ぶ。**
 
-> **配布形態について**: GitHub Pages 版は停止中です (公開 https サイトからローカル LLM への接続はブラウザの制約で中継 proxy が必要になり UX が悪いため)。**proxy 不要でローカル LLM に直結できる Tauri デスクトップ版へ移行中**です。それまではローカルでのビルド (下記) でお使いください。
+yominterp (ヨミンタープ) は、英語で書かれた Z-machine / Glulx のインタラクティブフィクション (ZORK のようなテキストアドベンチャー) を、AI 翻訳をはさんで**日本語のまま遊べる**ようにするプレイヤーです。
 
-- 入口: 日本語の意図 → ゲームのパーサが受理する正規英コマンド (intent 変換 + 自己修正ループ)
-- 出口: ゲームの英語出力 → 日本語 (固有名詞グロッサリで表記一貫)
-- ゲーム本体 (story file) もインタプリタも無改造。手持ちの `.z3/.z5/.z8/.zblorb` を読み込んで遊べます
+- あなたは**日本語で指示**を打ち、画面は**日本語で**返ってきます。
+- ゲーム本体もインタプリタも改造しません。手持ちの英語ゲームファイル (`.z3 / .z5 / .z8 / .zblorb` など) をそのまま読み込めます。
+- 翻訳は、あなたが用意した LLM (手元で動くローカル LLM や、OpenAI 互換 API) が行います。
 
-## Web プレイヤー (段階2a)
+> 名前の由来: yomin = Enchanter シリーズの「心を読む」呪文 + interp(reter)。
 
-ブラウザだけで動く静的アプリです。VM は [emglken](https://github.com/curiousdannii/emglken) (Bocfel, WASM) を埋め込み、LLM はお手持ちの OpenAI 互換 endpoint (BYO) に接続します。
+## 遊び方
 
-```bash
-npm install
-npm run build:web        # dist/ を生成
-npx vite preview         # ローカルで配信
-```
+1. **ゲームを開く** — メニューの「開く」から、手持ちの英語 IF のゲームファイルを選びます。
+   ゲームは同梱していません。[IF Archive](https://ifarchive.org/) などで公開されているフリー作品などをご用意ください。
+2. **LLM を設定する** — メニューの「設定」で、翻訳に使う LLM の接続先を入力します。
+   - 手軽なのは**ローカル LLM** ([LM Studio](https://lmstudio.ai/) など)。例: `http://127.0.0.1:1234/v1`
+   - OpenAI 互換の API でも動きます。
+   - 「接続テスト」で疎通を確認できます。
+3. **日本語で遊ぶ** — 入力欄に「周りを見る」「ランプを取って北へ行く」のように日本語で指示します。
+   会話シーンの選択肢はボタンで選べます。うまく伝わらなかったときは、裏で自動的に言い直して再挑戦します。
 
-1. 画面右上「設定」で LLM 接続先を設定 (例: LM Studio `http://127.0.0.1:1234/v1`)
-2. 「接続テスト」で疎通を確認 (モデル一覧 → 失敗時は chat 疎通にフォールバック)
-3. 手持ちの story file を「ファイルを開く」または「URLから開く」で読み込む (ゲームは同梱しません。IF Archive 等のフリー作品が利用できます)
-4. 日本語で指示 (「周りを見る」「老人と話す」…)。送信された英コマンドは薄色で常時表示され、「原文」ボタンで英語原文を併記できます。会話メニューはボタンで選択できます
+### 表示の切り替え
 
-### LLM 接続と CORS
-
-ブラウザから LLM サーバーへ直接続するため、サーバー側で CORS を許可する必要があります。
-
-| 接続先 | CORS 設定 | 確認状況 |
-|---|---|---|
-| LM Studio | Settings → Developer → **Enable CORS** | CORS 無効時は下記 proxy で動作確認済み |
-| Ollama | 環境変数 `OLLAMA_ORIGINS=*` (または対象 origin) | 未実測 (公式仕様) |
-| llama.cpp server | 既定で CORS 許可 | 未実測 (公式仕様) |
-| OpenAI / OpenRouter 等クラウド | サービス側で許可済みのことが多い | 未実測。**高額キーのブラウザ利用は非推奨** |
-
-**Chrome をお使いの場合**: 公開サイト (https) からローカル LLM (http://127.0.0.1) への初回接続時に「ローカルネットワークへのアクセス」許可を求められます。「許可」を選んでください。
-
-CORS を有効にできない場合は同梱の中継 CLI を使ってください:
-
-```bash
-npm run proxy -- --target http://127.0.0.1:1234
-# 表示された Base URL (トークン入り) をアプリの設定に貼り付ける
-```
-
-中継は 127.0.0.1 のみ bind し、起動毎のランダムトークンを必須にし、転送先は起動時に固定されます (踏み台化防止)。API key は保存・注入せず素通しします。許可 origin は localhost/127.0.0.1 と公式 Pages (https://h-o-soft.github.io) が既定で、その他は `--origin` で追加します。
-
-### API key の取り扱い
-
-- API key は既定で**メモリ保持のみ** (リロードで消えます)。保存はチェックボックスで明示 opt-in
-- 静的サイトのため、key が第三者サーバーへ送られることはありません (接続先はあなたが設定した endpoint のみ)
-- 高額なクラウド key の利用は非推奨です (ローカル LLM か使い捨て key を推奨)
+- **クラシック端末モード / モダン表示** — メニューの「表示」で切り替えられます。クラシックは 80×24 桁の古典的な端末風 (1 画面ずつ「キーを押して続行」で送る)、モダンはウィンドウいっぱいにスクロールします。
+- **原文表示** — メニューの「原文」で、日本語訳と並べて英語の原文も表示できます。
 
 ### セーブ
 
-ゲーム内 `save`/`restore` (画面の「保存」「再開」ボタン) は、ブラウザの IndexedDB にゲーム別 (SHA-256) で保存されます。
+ゲーム内の `save` / `restore` (メニューの「セーブ」「ロード」) は、お使いのブラウザ／アプリ内にゲームごとに保存されます。
 
-## CLI 版 (段階1) と検証
+## 入手と起動
+
+### デスクトップ版 (ローカル LLM におすすめ)
+
+ローカル LLM を使うなら、デスクトップ版 (Tauri) が一番手軽です。**プロキシなどの設定なしで** `http://127.0.0.1` のローカル LLM に直接つながります。
 
 ```bash
-brew install frotz       # dfrotz 同梱
-cp config.example.json config.json
-npm run play             # 日本語で対話プレイ (dfrotz)
-npm test                 # vitest (refs/ や LM Studio が無いテストはスキップ)
-npm run verify -- --engine emglken   # transcript 検証 (要 refs/ + fixtures)
-npx tsx src/verify/engine-parity.ts  # dfrotz vs emglken の移植パリティ検証
-npm run e2e              # Playwright ブラウザ煙テスト (要 npm run build:web)
+npm install
+npm run tauri dev      # Rust のツールチェーンが必要です
 ```
 
-詳細は CLAUDE.md を参照。
+### ブラウザ版
+
+```bash
+npm install
+npm run build:web
+npx vite preview       # 表示された URL をブラウザで開く
+```
+
+ブラウザ版でローカル LLM につなぐ場合は、LLM サーバー側で CORS の許可が必要です (LM Studio なら Settings → Developer → Enable CORS)。許可できない環境では同梱の中継ツールを使えます (→ [開発者向け](#開発者向け))。
+
+## 翻訳に使う LLM について
+
+翻訳に使う LLM は**あなたが用意**します。
+
+- **ローカル LLM がおすすめ**: LM Studio / Ollama / llama.cpp など。手元で動くので API 料金がかからず、プライバシーも保てます。日本語が得意な軽量モデルでも実用になります。
+- **OpenAI 互換 API** でも動作します。ただし高額なクラウドのキーをブラウザで使うのはおすすめしません (使い捨てキーかローカル LLM を)。
+- API キーは既定で**メモリ上にだけ**保持され、リロードで消えます。保存するのは明示的に選んだときだけです。接続先はあなたが設定した endpoint のみで、第三者に送られることはありません。
 
 ## ライセンス
 
-本プロジェクトは MIT License。バンドルする VM (Bocfel / Glulxe / AsyncGlk / RemGlk-rs) はすべて MIT です (GPL のエンジンはバンドルしません — CI で検査)。ゲームファイルは同梱せず、ユーザーが用意します (著作権は各作者に帰属)。
+MIT License。個人の趣味プロジェクトです。
+同梱している仮想マシン (Bocfel / Glulxe / AsyncGlk / RemGlk-rs) はすべて MIT ライセンスです。
+ゲームファイルは同梱しておらず、著作権は各作者に帰属します。お手持ちの作品をご用意ください。
+
+---
+
+## 開発者向け
+
+<details>
+<summary>仕組み・ビルド・テスト・中継ツール</summary>
+
+### 仕組み
+
+入口 (日本語の意図 → ゲームのパーサが受理する英コマンドへ変換 ＋ 自己修正ループ) と、出口 (英語出力 → 日本語、固有名詞は用語集で表記統一) の 2 段の翻訳をはさみます。ゲーム本体もインタプリタも無改造で、ストーリーファイルはデータとして読むだけです。
+
+VM は [emglken](https://github.com/curiousdannii/emglken) (Bocfel ほか、WASM) をアプリ内に埋め込みます。翻訳層 (`src/core/`) は環境非依存で、ブラウザ版・デスクトップ版で共有します。
+
+### ビルドとテスト
+
+```bash
+npm install
+npm run build:web     # ブラウザ版を dist/ に生成
+npm test              # ユニットテスト (vitest)
+npm run e2e           # ブラウザ煙テスト (Playwright、要 build:web)
+npm run tauri dev     # デスクトップ版 (Tauri、要 Rust)
+```
+
+### ローカル LLM への中継ツール (CORS 回避)
+
+ブラウザ版で LLM サーバーの CORS を有効化できない場合の中継 CLI:
+
+```bash
+npm run proxy -- --target http://127.0.0.1:1234
+# 表示された Base URL (トークン入り) をアプリの「設定」に貼り付ける
+```
+
+127.0.0.1 のみに bind し、起動ごとのランダムトークンを必須にし、転送先は起動時に固定されます (踏み台化防止)。API キーは保存・注入せず素通しします。
+
+### CLI 版 (ターミナルで遊ぶ)
+
+```bash
+brew install frotz                  # dfrotz 同梱
+cp config.example.json config.json
+npm run play                        # ターミナルで日本語対話プレイ
+```
+
+### ライセンスの注意
+
+同梱する VM はすべて MIT です。GPL のエンジン (TADS / SCARE など) はバンドルしません (CI で `dist/` を検査しています)。
+
+</details>
