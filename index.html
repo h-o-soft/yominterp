@@ -15,11 +15,10 @@
   </head>
   <body>
     <div id="app">
-      <!-- 上部バー左〜中央はゲームのステータスライン (場所名/Score/手数) 専用。
-           アプリ操作は右の☰メニューにまとめる -->
+      <!-- 上部バーはゲームのステータスライン専用 (場所名 + 右寄せ情報を省略せず全幅で)。
+           アプリ操作の☰メニューは下部 (入力バー) に置き、ステータスと衝突させない -->
       <header id="topbar">
-        <span id="status-line" title="ステータス行 (場所名・得点・手数)"></span>
-        <button id="btn-menu" class="hamburger" title="メニュー" aria-haspopup="true" aria-expanded="false">☰</button>
+        <span id="status-line" title="ステータス行 (場所名・得点・手数 等)"></span>
       </header>
       <nav id="topbar-menu" hidden aria-label="メニュー">
         <button id="btn-open-top">📂 開く…</button>
@@ -33,6 +32,7 @@
       <footer id="inputbar">
         <div id="choices" hidden></div>
         <form id="input-form">
+          <button id="btn-menu" type="button" class="hamburger" title="メニュー" aria-haspopup="true" aria-expanded="false">☰</button>
           <span id="prompt-mark">&gt;</span>
           <input id="input" autocomplete="off" placeholder="日本語で指示してください" disabled />
           <button id="btn-send" disabled>送信</button>

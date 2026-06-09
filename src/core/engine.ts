@@ -117,6 +117,25 @@ export function parseStatusLine(line: string): StatusInfo | undefined {
 }
 
 /**
+ * ステータス行を表示用に分解する (翻訳・整形のため)。
+ * - Score/Moves 形式 (ghosts 等) → { room, score, moves }
+ * - 「左 …(2+空白)… 右」形式 (anchorhead の "場所名 ... day one") → { left, right }
+ * - それ以外 → { left }
+ * room/left/right は翻訳対象、score/moves はそのまま。
+ */
+export type StatusParts =
+  | { room: string; score: number; moves: number }
+  | { left: string; right?: string };
+
+export function parseStatusGeneric(line: string): StatusParts {
+  const sm = parseStatusLine(line);
+  if (sm !== undefined) return { room: sm.room, score: sm.score, moves: sm.moves };
+  const m = /^(.+?)\s{2,}(.+)$/.exec(line.trim());
+  if (m !== null) return { left: m[1]!.trim(), right: m[2]!.trim() };
+  return { left: line.trim() };
+}
+
+/**
  * 受信生テキストから「本文」と「最後のステータス行」を分離する。
  * - ステータス行 (複数あれば最後を採用) を除去
  * - 末尾のプロンプト記号 `>` を除去

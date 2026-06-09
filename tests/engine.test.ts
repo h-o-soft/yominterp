@@ -94,3 +94,20 @@ describe('uniformStyle (段落一様装飾の判定)', () => {
     ).toBeUndefined();
   });
 });
+
+describe('parseStatusGeneric (汎用ステータス分解)', () => {
+  it('Score/Moves 形式 (ghosts)', async () => {
+    const { parseStatusGeneric } = await import('../src/core/engine.js');
+    const r = parseStatusGeneric(' Vestibule                              Score: 5     Moves: 1');
+    expect(r).toEqual({ room: 'Vestibule', score: 5, moves: 1 });
+  });
+  it('「左 … 右」形式 (anchorhead の場所名 + 右寄せ day one)', async () => {
+    const { parseStatusGeneric } = await import('../src/core/engine.js');
+    const r = parseStatusGeneric(' Outside the Real Estate Office                      day one');
+    expect(r).toEqual({ left: 'Outside the Real Estate Office', right: 'day one' });
+  });
+  it('右寄せ情報なし (単独場所名)', async () => {
+    const { parseStatusGeneric } = await import('../src/core/engine.js');
+    expect(parseStatusGeneric('  Dungeon Cell  ')).toEqual({ left: 'Dungeon Cell' });
+  });
+});

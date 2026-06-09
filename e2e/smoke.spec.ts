@@ -18,14 +18,15 @@ test('ページが起動し、未設定なら設定ダイアログが開く', as
   await expect(page.locator('#terminal')).toContainText('日本語で遊ぶ');
 });
 
-test('ウェルカム画面・上部バー左はステータス専用・☰メニューに操作集約', async ({ page }) => {
+test('ウェルカム画面・上部バーはステータス専用・☰メニューは下部入力バー', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '閉じる' }).click();
   await expect(page.locator('.welcome .logo')).toHaveText('yominterp');
   await expect(page.locator('.welcome .subtitle')).toContainText('日本語で遊ぶ');
-  // 上部バーの操作ボタンは ☰ のみ (左はステータスライン専用)
-  await expect(page.locator('#topbar button')).toHaveCount(1);
-  await expect(page.locator('#btn-menu')).toBeVisible();
+  // 上部バーに操作ボタンはない (ステータスライン専用 — 右寄せ情報を隠さない)
+  await expect(page.locator('#topbar button')).toHaveCount(0);
+  // ☰ は下部の入力バーにある
+  await expect(page.locator('#inputbar #btn-menu')).toBeVisible();
   // ☰ メニューを開くと操作項目が並ぶ
   await expect(page.locator('#topbar-menu')).toBeHidden();
   await page.locator('#btn-menu').click();

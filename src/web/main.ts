@@ -2,7 +2,7 @@
  * Web プレイヤーアプリのエントリ (plan.md 段階2a)。
  * CLI (src/cli/main.ts) と同じ翻訳コア/セッション機構を Web UI に接続する。
  */
-import { parseStatusLine } from '../core/engine.js';
+import { parseStatusGeneric } from '../core/engine.js';
 import { LLMClient } from '../core/llm/client.js';
 import { type MenuChoice, type MenuSpec, detectMenu, resolveMenuKey, splitMenuBlock } from '../core/menu.js';
 import { REAL_QUESTION_RE, Session, sendResolvingPauses } from '../core/session.js';
@@ -216,12 +216,11 @@ function makeLLM(): LLMClient {
   }, logger);
 }
 
+/** ステータス行の前回の生テキスト (重複翻訳を避ける) */
+let lastStatusRaw: string | undefined;
+
 function showStatus(line: string | undefined, style?: SpanStyle): void {
   if (line === undefined) return;
-  const s = parseStatusLine(line);
-  statusLine.textContent = s
-    ? `${s.room}  得点: ${s.score}  手数: ${s.moves}`
-    : line.trim();
   // ゲーム指定のステータス色 (例: ghosts は赤の反転バー) を topbar に反映
   const topbar = document.getElementById('topbar')!;
   const css = styleToCss(style);
@@ -229,6 +228,56 @@ function showStatus(line: string | undefined, style?: SpanStyle): void {
     topbar.setAttribute('style', css.inline);
     statusLine.setAttribute('style', 'color: inherit');
   }
+  if (line === lastStatusRaw) return;
+  lastStatusRaw = line;
+
+  const parsed = parseStatusGeneric(line);
+  // まず英語/数値を即表示 (翻訳待ちでブロックしない)。裏で和訳して差し替える
+  if ('room' in parsed) {
+    statusLine.textContent = `${parsed.room}  得点: ${parsed.score}  手数: ${parsed.moves}`;
+    void translateOut(parsed.room).then((ja) => {
+      if (lastStatusRaw === line) statusLine.textContent = `${ja}  得点: ${parsed.score}  手数: ${parsed.moves}`;
+    });
+  } else {
+    statusLine.textContent = parsed.right !== undefined ? `${parsed.left}　${parsed.right}` : parsed.left;
+    const right = parsed.right;
+    void Promise.all([
+      translateOut(parsed.left),
+      right !== undefined ? translateOut(right) : Promise.resolve(''),
+    ]).then(([l, r]) => {
+      if (lastStatusRaw === line) statusLine.textContent = r !== '' ? `${l}　${r}` : l;
+    });
+  }
+}
+
+/** ゲーム指定の背景色を端末全体に適用し、文字背景・余白を統一する (Z-machine の
+ *  「背景色設定」= 文字背景 = 画面塗り。window 背景は GlkOte に来ないので文字
+ *  スパンの背景色から拾う) */
+let gameBg: string | undefined;
+function applyGameBackground(bg: string | undefined): void {
+  if (bg === undefined || bg === gameBg) return;
+  gameBg = bg;
+  terminal.style.backgroundColor = bg;
+  document.body.style.backgroundColor = bg;
+}
+
+/** out の rich/statusStyle から本文の背景色を拾って端末全体に適用する */
+function applyBackgroundFrom(out: { rich?: StyledBlock[]; statusStyle?: SpanStyle }): void {
+  let bg: string | undefined;
+  for (const block of out.rich ?? []) {
+    for (const line of block.lines) {
+      for (const span of line.spans) {
+        // reverse は前景/背景が入れ替わるので地色判定から除外
+        if (span.style?.bg !== undefined && span.style.reverse !== true) {
+          bg = span.style.bg;
+          break;
+        }
+      }
+      if (bg !== undefined) break;
+    }
+    if (bg !== undefined) break;
+  }
+  applyGameBackground(bg);
 }
 
 async function translateOut(body: string): Promise<string> {
@@ -267,6 +316,7 @@ async function renderRichOutput(out: {
 }): Promise<string> {
   // ゲームの画面クリア要求を honor (クラシック=実クリア / モダン=区切り線)
   if (out.cleared === true) honorClear();
+  applyBackgroundFrom(out); // ゲーム背景色を端末全体に統一
   showStatus(out.statusLine, out.statusStyle);
   if (out.rich === undefined) {
     return renderGameText(out.body);
@@ -387,6 +437,7 @@ async function presentMenu(
   out: { body: string; statusLine?: string; statusStyle?: SpanStyle; rich?: StyledBlock[] },
   spec: MenuSpec,
 ): Promise<void> {
+  applyBackgroundFrom(out);
   showStatus(out.statusLine, out.statusStyle);
   // 会話セリフ (narrative) も地の文と同じ既定装飾 (ghosts は黒背景/白文字) を当てる。
   // rich の para から一様装飾を取得 (会話は一様) し fallback とする
@@ -546,6 +597,11 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
   terminal.innerHTML = '';
   terminal.classList.remove('welcoming');
   clearChoices();
+  // ゲーム切替: 背景色・ステータスのキャッシュをリセット
+  gameBg = undefined;
+  lastStatusRaw = undefined;
+  terminal.style.backgroundColor = '';
+  document.body.style.backgroundColor = '';
   gameOver = false;
   try {
     const info = analyzeStory(data, filename);

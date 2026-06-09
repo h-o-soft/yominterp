@@ -21,19 +21,20 @@ body {
   background: var(--status-bg); padding: 0.3rem 0.8rem; gap: 0.5rem;
   white-space: pre; overflow: hidden;
 }
-#status-line { overflow: hidden; text-overflow: ellipsis; color: var(--accent); flex: 1; }
-/* ハンバーガーボタンは自前の不透明な地色と固定文字色を持ち、ステータスバーの
-   ゲーム指定色 (赤反転/白背景 等) が透けても常に可読にする */
+/* ステータスラインは上部バー全幅 (場所名 + 右寄せ情報を省略せず表示) */
+#status-line { color: var(--accent); flex: 1; white-space: pre; overflow-x: auto; }
+/* ☰ ハンバーガーは下部入力バーに置く (上部のステータスと衝突させない)。
+   自前の不透明な地色で常に可読 */
 #btn-menu {
   background: #1d2a22; border: 1px solid var(--dim); color: var(--fg);
-  font: inherit; font-size: 1.05rem; line-height: 1; padding: 0.15rem 0.55rem;
+  font: inherit; font-size: 1.05rem; line-height: 1; padding: 0.2rem 0.55rem;
   cursor: pointer; border-radius: 3px; flex-shrink: 0;
 }
 #btn-menu:hover { border-color: var(--accent); }
 
-/* ☰ メニュー (ドロップダウン) */
+/* ☰ メニュー (下部の☰の上に開くドロップアップ) */
 #topbar-menu {
-  position: absolute; top: 2.2rem; right: 0.5rem; z-index: 20;
+  position: absolute; bottom: 3rem; left: 0.5rem; z-index: 20;
   display: flex; flex-direction: column; min-width: 13rem;
   background: #1d2a22; border: 1px solid var(--dim); border-radius: 5px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); overflow: hidden;
