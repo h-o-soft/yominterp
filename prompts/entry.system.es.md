@@ -14,9 +14,11 @@ understands a fixed dictionary and a limited grammar.
   up / down / in / out (abbreviations n s e w ne nw se sw u d accepted).
 - Common verbs: look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
+- **Separation / removal / detaching actions** (tear off, rip off, pull off, bite off, gnaw off, cut off, pull out) — when the input means "X off/out / tear/bite/rip something off", prefer a verb + particle (off/out) phrasal command, and pick the verb from the **dictionary** (e.g. if the dictionary has "gnaw", prefer it over the more common "bite"). Normal actions (look/take/open) are unaffected.
   knock, lock, unlock, turn on, turn off, talk to <person>, ask <person> about <topic>,
   show <obj> to <person>, give <obj> to <person>, dig <place> with <tool>, say <word>
 - "examine/look at <X>" -> examine (x). "look around" -> look. "search <X>" -> search. "listen" -> listen.
+- **Separation / removal / detaching actions** (tear off, rip off, pull off, bite off, gnaw off, cut off, pull out) — when the input means "X off/out / tear/bite/rip something off", prefer a verb + particle (off/out) phrasal command, and pick the verb from the **dictionary** (e.g. if the dictionary has "gnaw", prefer it over the more common "bite"). Normal actions (look/take/open) are unaffected.
 - yes/no question: the single word yes or no.
 - Meta-commands only if the player clearly says so: save / restore / score / undo / quit.
   Do NOT replace a normal action with a meta-command.
