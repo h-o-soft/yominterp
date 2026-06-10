@@ -147,3 +147,25 @@ test('原文ビューの本文段落 (p.raw) はクラシックでも折り返�
   expect(result.overflow).toBe(false); // 横にはみ出さない
   expect(result.multiline).toBe(true); // 折り返して複数行になる
 });
+
+test('「>」プレフィックスで英語コマンドを入口翻訳せず直接送れる (LLM 不要・決定論の回復手段)', async ({
+  page,
+}) => {
+  test.skip(!existsSync(DARKPIT), `${DARKPIT} なし (ローカル専用テスト素材)`);
+  await page.addInitScript(() => {
+    localStorage.setItem('yominterp-settings', JSON.stringify({ classicMode: false }));
+  });
+  await page.goto('/');
+  await page.locator('#set-baseurl').fill('http://127.0.0.1:1/v1'); // 到達不能 = 入口LLMは使えない
+  await page.locator('#set-model').fill('dummy');
+  await page.locator('#file-input').setInputFiles(DARKPIT);
+  await expect(page.locator('#terminal')).toContainText('Dungeon Cell', { timeout: 45000 });
+  await expect(page.locator('#input')).toBeEnabled();
+  // 入口 LLM は到達不能だが、「> look」は翻訳をバイパスして直接ゲームへ届く
+  await page.locator('#input').fill('> look');
+  await page.locator('#input').press('Enter');
+  // 直接送ったコマンドがエコーされ、ゲームの応答 (Dungeon Cell) が再度出る
+  await expect(page.locator('#terminal p.cmd').filter({ hasText: '> look' })).toHaveCount(1, {
+    timeout: 20000,
+  });
+});
