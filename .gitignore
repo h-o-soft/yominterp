@@ -36,3 +36,6 @@ reports/
 
 # secretary-system のローカル状態 (マシン固有)
 .claude/.secretary-estate
+
+# Codex 実装レビューの一時出力
+review-result.md
