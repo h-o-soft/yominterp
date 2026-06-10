@@ -260,6 +260,8 @@ function makeLLM(): LLMClient {
 
 /** ステータス行の前回の生テキスト (重複翻訳を避ける) */
 let lastStatusRaw: string | undefined;
+/** 部屋名(英語)→ 訳。glossary 非依存でステータス表示を安定させる (言語/ゲーム切替でクリア) */
+const roomTranslations = new Map<string, string>();
 
 function showStatus(line: string | undefined, style?: SpanStyle): void {
   if (line === undefined) return;
@@ -283,15 +285,42 @@ function showStatus(line: string | undefined, style?: SpanStyle): void {
   // まず英語/数値を即表示 (翻訳待ちでブロックしない)。裏で和訳して差し替える
   if ('room' in parsed) {
     const right = `${tr('scoreLabel')}: ${parsed.score}　${tr('movesLabel')}: ${parsed.moves}`;
-    setStatus(parsed.room, right);
-    void translateOut(parsed.room).then((ja) => setStatus(ja, right));
+    const expectedRoom = parsed.room;
+    // 部屋名は毎ターン同じでも、ステータス行は手数で変わるため exit 翻訳キャッシュは
+    // 効くが、glossary が増えるとキー(glossaryHash)が変わってキャッシュが外れ、
+    // 部屋名が毎回 LLM 再翻訳になって表示が間に合わず英語のまま残る (7手目で発現)。
+    // 部屋名は固有名詞表記より表示安定を優先し、glossary 非依存のセッション内
+    // キャッシュで即日本語表示する。
+    const cached = roomTranslations.get(expectedRoom);
+    setStatus(cached ?? parsed.room, right);
+    if (cached === undefined) {
+      void translateOut(parsed.room).then((ja) => {
+        roomTranslations.set(expectedRoom, ja);
+        const cur = lastStatusRaw !== undefined ? parseStatusGeneric(lastStatusRaw) : undefined;
+        if (cur !== undefined && 'room' in cur && cur.room === expectedRoom) {
+          statusLeft.textContent = ja;
+        }
+      });
+    }
   } else {
-    setStatus(parsed.left, parsed.right ?? '');
+    // 「左(場所名) …空白… 右(座標/時刻/日付)」形式 (ninetenths の "The Hilltop
+    //  y:.. d:.. h:.. m:.." 等)。右は手数/時刻で毎ターン変わるため exit 翻訳キャッシュ
+    //  が効かず、左(場所名)も glossary 増加でキャッシュが外れて翻訳が遅れ、英語のまま
+    //  残る (7手目で発現)。左は glossary 非依存のセッションキャッシュで即日本語表示する。
     const right = parsed.right;
-    void Promise.all([
-      translateOut(parsed.left),
-      right !== undefined ? translateOut(right) : Promise.resolve(''),
-    ]).then(([l, r]) => setStatus(l, r));
+    const expectedLeft = parsed.left;
+    const cachedL = roomTranslations.get(expectedLeft);
+    setStatus(cachedL ?? parsed.left, right ?? '');
+    if (cachedL === undefined) {
+      void Promise.all([
+        translateOut(parsed.left),
+        right !== undefined ? translateOut(right) : Promise.resolve(''),
+      ]).then(([l, r]) => {
+        roomTranslations.set(expectedLeft, l);
+        const cur = lastStatusRaw !== undefined ? parseStatusGeneric(lastStatusRaw) : undefined;
+        if (cur !== undefined && 'left' in cur && cur.left === expectedLeft) setStatus(l, r);
+      });
+    }
   }
 }
 
@@ -710,6 +739,7 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
   // ゲーム切替: 背景色・ステータスのキャッシュをリセット
   gameBg = undefined;
   lastStatusRaw = undefined;
+  roomTranslations.clear(); // 言語/ゲームが変わると部屋名の訳も変わる
   terminal.style.backgroundColor = '';
   document.body.style.backgroundColor = '';
   gameOver = false;

@@ -195,6 +195,7 @@ export class GlkOteCapture {
           clear: c.clear,
           lines: c.lines?.map((l) => ({ line: l.line, text: (l.content ?? []).map((s) => (typeof s === 'string' ? s : s.text)).join('') })),
           textParas: c.text?.length,
+          bufText: c.text?.map((para) => (para.content ?? []).map((s) => (typeof s === 'string' ? s : s.text)).join('')).join(' | ').slice(0, 300),
         })),
       });
     }
