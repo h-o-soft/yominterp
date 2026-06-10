@@ -118,8 +118,8 @@ describe('Session 自己修正ループ', () => {
     const { entry, retranslateCalls } = fakeEntry(['bad cmd'], [['bad cmd'], ['bad cmd']]);
     const session = new Session(engine, entry, OPTS);
     const turn = await session.handleUserInput('何か');
-    expect(turn.error?.message).toContain('unknown verb');
     expect(turn.error?.source).toBe('game');
+    if (turn.error?.source === 'game') expect(turn.error.message).toContain('unknown verb');
     expect(retranslateCalls).toHaveLength(1); // 同一案で即打ち切り
     expect(engine.sent).toEqual(['bad cmd']);
   });
@@ -240,8 +240,8 @@ describe('Session 自己修正ループ', () => {
     const { entry } = fakeEntry([]);
     const session = new Session(engine, entry, OPTS);
     const turn = await session.handleUserInput('意味不明な入力');
-    expect(turn.error?.message).toContain('コマンドを生成できません');
     expect(turn.error?.source).toBe('app');
+    if (turn.error?.source === 'app') expect(turn.error.code).toBe('noCommands');
     expect(engine.sent).toEqual([]);
   });
 });

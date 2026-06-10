@@ -6,13 +6,18 @@
  *
  * メタコマンド: /quit /raw /undo /retry /score /save /help
  */
-import { DEFAULT_LANGUAGE } from '../core/i18n/language.js';
+import { DEFAULT_LANGUAGE, LANGUAGE_PROFILES } from '../core/i18n/language.js';
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { parseStatusLine } from '../core/engine.js';
 import { LLMClient } from '../core/llm/client.js';
 import { detectMenu, resolveMenuKey } from '../core/menu.js';
-import { Session, type TurnResult, sendResolvingPauses } from '../core/session.js';
+import { type AppErrorCode, Session, type TurnResult, sendResolvingPauses } from '../core/session.js';
+
+/** app (core) 由来エラーの日本語文言 (CLI は操作文言を日本語固定) */
+const APP_ERROR_JA: Record<AppErrorCode, string> = {
+  noCommands: 'LLM がコマンドを生成できませんでした。別の言い方を試してください。',
+};
 import { EntryTranslator, usefulObjectNames } from '../core/translate/entry.js';
 import { ExitTranslator } from '../core/translate/exit.js';
 import { extractDictionary } from '../core/zfile/dictionary.js';
@@ -207,7 +212,7 @@ async function main(): Promise<void> {
         (await ask(`${DIM}(${keys} で選択 / 日本語で指示${endHint})${RESET}\n? `)) ?? ''
       ).trim(); // stdin 終端なら会話を終える扱い
       let selection: string | undefined;
-      if (raw === '' || ['終わる', '終える', '終了', 'やめる', '/end'].includes(raw)) {
+      if (raw === '' || raw === '/end' || LANGUAGE_PROFILES[language].endConversationWords.includes(raw.toLowerCase())) {
         selection = menuSpec.enterEnds ? '' : menuSpec.endKey;
       } else if (/^[A-Za-z0-9]{1,2}$/.test(raw)) {
         selection = resolveMenuKey(menuSpec, raw);
@@ -249,7 +254,9 @@ async function main(): Promise<void> {
     if (turn.error !== undefined) {
       // game 由来 (ゲーム英語) は出口翻訳に回す。app 由来は既にプレイヤー向け文言
       const msg =
-        turn.error.source === 'game' ? await exit.translate(turn.error.message) : turn.error.message;
+        turn.error.source === 'game'
+          ? await exit.translate(turn.error.message)
+          : APP_ERROR_JA[turn.error.code];
       console.log(`${YELLOW}${msg}${RESET}`);
     }
     if (turn.aborted) {

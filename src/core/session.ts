@@ -47,17 +47,18 @@ export interface CommandResult {
   retries: number;
 }
 
+/** app (core) 由来エラーのコード。Web/CLI 側でローカライズする */
+export type AppErrorCode = 'noCommands';
+
 /**
  * ターンで表面化したエラーの出自。
- * - 'game': ゲーム (英語) のパーサエラー等。**出口翻訳に回す** (プレイヤー言語へ訳す)。
- * - 'app': アプリ/core 由来のメッセージ。**既にプレイヤー向け文言なので翻訳しない**。
- * 文字種 (非 ASCII=訳済み) で判定すると、非日本語ではローカライズ済み app 文言が
- * ASCII のこともあり二重翻訳/誤翻訳するため、出自で判定する。
+ * - 'game': ゲーム (英語) のパーサエラー等。message を**出口翻訳に回す** (プレイヤー言語へ)。
+ * - 'app': アプリ/core 由来。**code** を返し、Web/CLI 側でメッセージカタログから
+ *   プレイヤー言語の文言にする (core に言語別文字列を持たない・二重翻訳もしない)。
  */
-export interface TurnError {
-  source: 'game' | 'app';
-  message: string;
-}
+export type TurnError =
+  | { source: 'game'; message: string }
+  | { source: 'app'; code: AppErrorCode };
 
 export interface TurnResult {
   /** 確定したコマンドと出力 (送信順) */
@@ -181,10 +182,7 @@ export class Session {
     if (queue.length === 0) {
       return {
         results: [],
-        error: {
-          source: 'app',
-          message: 'LLM がコマンドを生成できませんでした。別の言い方を試してください。',
-        },
+        error: { source: 'app', code: 'noCommands' },
         aborted: false,
         gameOver: false,
         llmCalls,
