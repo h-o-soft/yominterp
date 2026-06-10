@@ -335,12 +335,13 @@ async function translateOut(body: string): Promise<string> {
   }
 }
 
-async function renderGameText(body: string, statusLineRaw?: string): Promise<string> {
+async function renderGameText(body: string, statusLineRaw?: string, paged = true): Promise<string> {
   showStatus(statusLineRaw);
   if (body.trim() === '') return '';
   const ja = await translateOut(body);
-  for (const chunk of settings.classicMode ? splitForPaging(ja, CLASSIC_COLS, classicPageLines()) : [ja]) {
-    await pageGate(chunk);
+  const usePager = settings.classicMode && paged;
+  for (const chunk of usePager ? splitForPaging(ja, CLASSIC_COLS, classicPageLines()) : [ja]) {
+    if (usePager) await pageGate(chunk);
     print('', chunk);
   }
   if (settings.showRaw && ja !== body) print('raw', body);
@@ -352,19 +353,22 @@ async function renderGameText(body: string, statusLineRaw?: string): Promise<str
  * 段落一様装飾を訳文に対応付けて描画する。rich が無いエンジンは従来描画。
  * 戻り値は表示した訳文 (メニュー検出やセッション履歴は従来どおり body を使う)。
  */
-async function renderRichOutput(out: {
-  body: string;
-  statusLine?: string;
-  statusStyle?: SpanStyle;
-  rich?: StyledBlock[];
-  cleared?: boolean;
-}): Promise<string> {
+async function renderRichOutput(
+  out: {
+    body: string;
+    statusLine?: string;
+    statusStyle?: SpanStyle;
+    rich?: StyledBlock[];
+    cleared?: boolean;
+  },
+  paged = true,
+): Promise<string> {
   // ゲームの画面クリア要求を honor (クラシック=実クリア / モダン=区切り線)
   if (out.cleared === true) honorClear();
   applyBackgroundFrom(out); // ゲーム背景色を端末全体に統一
   showStatus(out.statusLine, out.statusStyle);
   if (out.rich === undefined) {
-    return renderGameText(out.body);
+    return renderGameText(out.body, undefined, paged);
   }
   const grid = out.rich.find((b) => b.kind === 'grid');
   const para = out.rich.find((b) => b.kind === 'para');
@@ -373,7 +377,7 @@ async function renderRichOutput(out: {
     const plain = gridPlainText(grid);
     if (plain !== '') {
       const ja = await translateOut(plain);
-      await pageGate(ja);
+      if (paged) await pageGate(ja);
       printGridBox(ja, uniformStyle(grid.lines));
       shown += ja;
     }
@@ -381,11 +385,11 @@ async function renderRichOutput(out: {
   if (para !== undefined && para.lines.some((l) => l.spans.map((s) => s.text).join('').trim() !== '')) {
     // grid (quote box) の後に本文が続くなら間に空き 1 行
     if (shown !== '') {
-      await pageGate('');
+      if (paged) await pageGate('');
       print('', '');
     }
     // 段落別装飾が取れない段落も、本文全体の既定装飾 (ghosts は黒背景/白文字) を当てる
-    shown += await printBodyParagraphs(para.lines, uniformStyle(para.lines));
+    shown += await printBodyParagraphs(para.lines, uniformStyle(para.lines), paged);
   }
   if (settings.showRaw && out.rich.length > 0) printRawRich(out.rich);
   return shown;
@@ -401,9 +405,10 @@ async function renderRichOutput(out: {
 async function printBodyParagraphs(
   lines: StyledLine[],
   fallbackStyle?: SpanStyle,
+  paged = true,
 ): Promise<string> {
   let shown = '';
-  const usePager = settings.classicMode;
+  const usePager = settings.classicMode && paged;
   // 空行は即出力せず保留する。[More] のページクリアでページ境界の空行が
   // 消えないよう、保留空行は「次の段落とセット」で改ページ判定し、改ページ後の
   // 先頭に繰り越して出す (タイトル前の空行などが境界で失われないように)。
@@ -602,7 +607,7 @@ async function resolveKeypresses(out: EngineOutput): Promise<EngineOutput> {
     detectMenu(cur.body) === undefined &&
     !REAL_QUESTION_RE.test(cur.body.trimEnd())
   ) {
-    await renderRichOutput(cur);
+    await renderRichOutput(cur, false); // char メニュー画面は1画面更新 — [More] を挟まない
     // 押されたキーをそのまま VM へ (引用画面は任意キーで進み、HELP メニューは Q/N/P 等で操作)
     const key = await waitForKey(tr('keyWaitBar'));
     cur = await engine.send(key);

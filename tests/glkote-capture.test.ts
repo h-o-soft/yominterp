@@ -70,6 +70,47 @@ describe('GlkOteCapture (状態機械)', () => {
     expect(s2.gridHeight).toBe(1);
   });
 
+  it('grid 縮小 (clear なし) は現在の高さを超える残留行を捨てる', async () => {
+    // ninetenths の画面崩れ: upper window をメニューで拡大 → 選択後に高さだけ縮小し
+    // 各行をクリアしないゲームで、古いメニュー行が残留して本文に重なっていた。
+    const { cap } = makeCapture();
+    const p1 = cap.waitSettle();
+    cap.update({
+      type: 'update',
+      gen: 1,
+      windows: [{ id: 3, type: 'grid', gridheight: 7 }],
+      content: [
+        {
+          id: 3,
+          lines: [
+            { line: 0, content: [{ text: ' Dark room  Score: 0' }] },
+            { line: 2, content: [{ text: 'What do you do?' }] },
+            { line: 3, content: [{ text: '1: open the door' }] },
+            { line: 4, content: [{ text: '2: walk on' }] },
+          ],
+        },
+      ],
+      input: [{ id: 2, gen: 1, type: 'char' }],
+    });
+    const s1 = await p1;
+    expect(s1.gridLines).toContain('1: open the door');
+
+    // 選択後: clear を送らず gridheight を 1 に縮小するだけ
+    const p2 = cap.waitSettle();
+    cap.update({
+      type: 'update',
+      gen: 2,
+      windows: [{ id: 3, type: 'grid', gridheight: 1 }],
+      content: [{ id: 3, lines: [{ line: 0, content: [{ text: ' Hilltop  Score: 1' }] }] }],
+      input: [{ id: 2, gen: 2, type: 'line' }],
+    });
+    const s2 = await p2;
+    // 現在の高さ 1 で切り詰め → 残留メニュー行は出ない
+    expect(s2.gridLines).toEqual([' Hilltop  Score: 1']);
+    expect(s2.gridLines).not.toContain('1: open the door');
+    expect(s2.gridHeight).toBe(1);
+  });
+
   it('specialinput で settle し、disable+入力なしで ended になる', async () => {
     const { cap } = makeCapture();
     const p = cap.waitSettle();

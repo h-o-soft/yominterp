@@ -298,7 +298,11 @@ export class GlkOteCapture {
     for (const id of gridIds) {
       const h = this.windows.get(id)?.height ?? 0;
       if (h > gridHeight) gridHeight = h;
-      for (const line of this.gridContent.get(id) ?? []) {
+      // grid window の現在の高さ h を超える行は、upper window が縮小 (メニュー →
+      // ステータス1行 等) した後に残った無効行。これを捨てないと、拡大メニューが
+      // 毎ターン本文先頭に再連結されて画面上部に残留・重畳する (ninetenths で発現)。
+      const content = h > 0 ? (this.gridContent.get(id) ?? []).slice(0, h) : [];
+      for (const line of content) {
         const resolved = line ?? { spans: [] };
         richGrid.push(resolved);
         const text = lineText(resolved);
