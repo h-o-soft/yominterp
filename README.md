@@ -10,6 +10,11 @@ yominterp (ヨミンタープ) は、英語で書かれた Z-machine / Glulx の
 
 > 名前の由来: yomin = Enchanter シリーズの「心を読む」呪文 + interp(reter)。
 
+![yominterp で英語 IF を日本語でプレイ (クラシック端末モード)](docs/screenshot-ja.png)
+
+> スクリーンショットのゲームは *Nine-tenths of the Law* by Jack Welch (ライセンス **[CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/)** / <https://github.com/dhakajack/ninetenths>)。
+> この画像は yominterp による日本語訳を含む原作の**二次的著作物**であり、**CC BY-NC-SA 3.0** で提供されます (yominterp 本体コードの MIT ライセンスとは別の素材です)。SA に従い派生物も同一ライセンス、NC につき商用利用時はこの画像の扱いにご注意ください。
+
 ## 特徴
 
 - 🌐 **英語 IF を日本語で** — 入口 (日本語 → ゲームが受理する英コマンド) と出口 (英語 → 日本語) の二段翻訳。ゲームもインタプリタも無改造。
@@ -81,6 +86,8 @@ npx vite preview       # 表示された URL をブラウザで開く
 MIT License。個人の趣味プロジェクトです。
 同梱している仮想マシン (Bocfel / Glulxe / AsyncGlk / RemGlk-rs) はすべて MIT ライセンスです。
 ゲームファイルは同梱しておらず、著作権は各作者に帰属します。お手持ちの作品をご用意ください。
+
+例外として、スクリーンショット `docs/screenshot-ja.png` は *Nine-tenths of the Law* by Jack Welch ([CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/)) の二次的著作物のため、**この画像のみ CC BY-NC-SA 3.0** で提供されます (本体コードの MIT とは別)。
 
 ---
 
