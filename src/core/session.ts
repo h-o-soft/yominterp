@@ -82,14 +82,14 @@ export const REAL_QUESTION_RE = /(\?|yes or no[.:\]]*)\s*$/i;
 async function sendWithAutoReplies(
   engine: ZEngine,
   command: string,
-  pickReply: (body: string) => string | undefined,
+  pickReply: (out: EngineOutput) => string | undefined,
   maxAutoReplies: number,
 ): Promise<EngineOutput> {
   let out = await engine.send(command);
   let merged = out;
   let n = 0;
   while (out.kind === 'query' && n < maxAutoReplies) {
-    const reply = pickReply(out.body);
+    const reply = pickReply(out);
     if (reply === undefined) break; // 自動応答しない query は呼び出し元へ返す
     n++;
     out = await engine.send(reply);
@@ -122,7 +122,7 @@ export async function sendExhaustingMenus(
   return sendWithAutoReplies(
     engine,
     command,
-    (body) => {
+    ({ body }) => {
       if (TALK_MENU_RE.test(body)) return '1';
       if (!REAL_QUESTION_RE.test(body.trimEnd())) return ''; // keypress 待ち pause
       return undefined;
@@ -133,8 +133,12 @@ export async function sendExhaustingMenus(
 
 /**
  * 対話プレイ用: pause/カットシーン画面のみ空行で自動続行する。
- * 会話メニューと真の質問 (yes-no 等) は自動応答せず query のまま返し、
- * ユーザーに選択させる (メニュー提示ループは CLI 側)。
+ * 会話メニュー・真の質問 (yes-no 等)・**char 入力要求 (keypress 待ち)** は自動応答せず
+ * query のまま返し、ユーザーに委ねる。
+ *
+ * char 入力要求を自動継続しないのが要点 (HELP やカットシーンの「press space」は
+ * read_char で keypress を待つ。これを空行で自動消化すると、HELP に入った瞬間に
+ * 勝手にめくられて戻れない/詰む。char はユーザーがキーを押す場面なので UI へ返す)。
  */
 export async function sendResolvingPauses(
   engine: ZEngine,
@@ -144,9 +148,10 @@ export async function sendResolvingPauses(
   return sendWithAutoReplies(
     engine,
     command,
-    (body) => {
-      if (detectMenu(body) !== undefined) return undefined; // メニューはユーザーが選ぶ
-      if (!REAL_QUESTION_RE.test(body.trimEnd())) return ''; // keypress 待ち pause
+    (out) => {
+      if (out.request === 'char') return undefined; // keypress はユーザーが押す (HELP 等)
+      if (detectMenu(out.body) !== undefined) return undefined; // メニューはユーザーが選ぶ
+      if (!REAL_QUESTION_RE.test(out.body.trimEnd())) return ''; // line 入力待ちの pause のみ自動継続
       return undefined;
     },
     maxAutoReplies,

@@ -198,11 +198,14 @@ describe('キー待ち/クリアのモード非依存契約', () => {
     const fn = main.slice(main.indexOf('function honorClear'), main.indexOf('function honorClear') + 200);
     expect(fn).not.toContain('settings.classicMode');
   });
-  it('冒頭キー待ちループは classicMode 条件なしで waitForContinue を呼ぶ', () => {
-    const loop = main.slice(main.indexOf('冒頭の pause/引用画面'), main.indexOf('冒頭の pause/引用画面') + 400);
-    // i18n 化で文言は tr('keyWaitBar') 経由 (カタログの keyWaitBar が「キーを押して続行」)
-    expect(loop).toContain("waitForContinue(tr('keyWaitBar'))");
-    expect(loop).not.toMatch(/if \(settings\.classicMode\)\s*\{\s*await waitForContinue/);
+  it('keypress 待ち (resolveKeypresses) は classicMode 条件なしで waitForContinue を呼ぶ', () => {
+    // 冒頭引用画面・HELP 等の keypress 待ちは共通の resolveKeypresses が処理する。
+    const fn = main.slice(main.indexOf('function resolveKeypresses'), main.indexOf('function resolveKeypresses') + 700);
+    expect(fn).toContain("waitForKey(tr('keyWaitBar'))");
+    expect(fn).not.toMatch(/if \(settings\.classicMode\)\s*\{\s*await waitForKey/);
+    // char 入力要求のときに、押されたキーをそのまま VM へ送る (HELP の Q 等)
+    expect(fn).toContain("request === 'char'");
+    expect(fn).toContain('engine.send(key)');
   });
 });
 

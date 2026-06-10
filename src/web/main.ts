@@ -145,6 +145,37 @@ function waitForContinue(label: string): Promise<void> {
 }
 
 /**
+ * char 入力要求 (read_char) に対し、ユーザーが**実際に押したキー**を返す。
+ * HELP のような「N/P/Q/RETURN で操作する char メニュー」では任意キー固定では
+ * 抜けられない (Q を押す必要がある) ため、押下キーをそのまま VM へ送る。
+ * Enter は '' (= VM 側で return)、その他の単一文字はその文字、クリックは space。
+ * 修飾キー単独は無視して待ち続ける。
+ */
+function waitForKey(label: string): Promise<string> {
+  return new Promise((resolve) => {
+    const bar = document.createElement('button');
+    bar.className = 'more-bar';
+    bar.textContent = label;
+    terminal.appendChild(bar);
+    terminal.scrollTop = terminal.scrollHeight;
+    const done = (key: string) => {
+      removeEventListener('keydown', onKey, true);
+      bar.remove();
+      resolve(key);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return; // 修飾単独は待つ
+      e.preventDefault();
+      e.stopPropagation();
+      done(e.key === 'Enter' ? '' : e.key.length === 1 ? e.key : ' ');
+    };
+    bar.addEventListener('click', () => done(' '), { once: true }); // クリックは space
+    addEventListener('keydown', onKey, { capture: true });
+    bar.focus();
+  });
+}
+
+/**
  * クラシックの 1 ページ表示行数 = 実表示枠の行数 − 1 ([More] バー分)。
  * 枠は定義上 24 行だが、ウィンドウが小さく枠が縮む場合はその実行数で計算する
  * (実表示領域に基づくページ送り。あふれを防ぐ)。
@@ -557,6 +588,28 @@ async function submitDirect(command: string): Promise<void> {
   }
 }
 
+/**
+ * keypress 待ち (char 入力要求の query) を、ユーザーのキー/クリックで 1 つずつ進める。
+ * 冒頭の引用画面・HELP・カットシーンの「press space」を honor する共通経路。
+ * char query の間 [描画 → キー待ちバー → space 送信] を繰り返し、最初の非 char 出力を返す。
+ */
+async function resolveKeypresses(out: EngineOutput): Promise<EngineOutput> {
+  let cur = out;
+  while (
+    engine !== undefined &&
+    cur.kind === 'query' &&
+    cur.request === 'char' &&
+    detectMenu(cur.body) === undefined &&
+    !REAL_QUESTION_RE.test(cur.body.trimEnd())
+  ) {
+    await renderRichOutput(cur);
+    // 押されたキーをそのまま VM へ (引用画面は任意キーで進み、HELP メニューは Q/N/P 等で操作)
+    const key = await waitForKey(tr('keyWaitBar'));
+    cur = await engine.send(key);
+  }
+  return cur;
+}
+
 async function handleUserInput(ja: string): Promise<void> {
   if (engine === undefined || session === undefined || entry === undefined) {
     print('system', tr('loadGameFirst'));
@@ -600,8 +653,19 @@ async function handleUserInput(ja: string): Promise<void> {
     const lastResult = turn.results[turn.results.length - 1];
     for (const r of turn.results) {
       print('cmd', `> ${r.command}${r.corrected ? ' ' + tr('corrected') : ''}`);
-      if (r === lastResult) await presentOutput(r.output);
-      else await renderRichOutput(r.output);
+      if (r !== lastResult) {
+        await renderRichOutput(r.output);
+        continue;
+      }
+      // 最後の出力が keypress 待ち (HELP 等) なら、ユーザーキーで進めてから提示する。
+      // resolveKeypresses が char query 画面を描画し、最初の非 char 出力を返す。
+      if (r.output.kind === 'query' && r.output.request === 'char') {
+        const final = await resolveKeypresses(r.output);
+        if (final !== r.output) session.pushGameOutput(final.body);
+        await presentOutput(final);
+      } else {
+        await presentOutput(r.output);
+      }
     }
     if (turn.error !== undefined) {
       // game 由来 (ゲーム英語) は出口翻訳に回す。app 由来は既にプレイヤー向け文言
@@ -691,18 +755,9 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
     pager.reset();
     let out = await engine.start();
     loading.remove(); // 起動完了 → ローディング表示を消す
-    // 冒頭の pause/引用画面: メニュー・真の質問でなければ表示して進める。
-    // ゲームのキー入力待ちは演出意図なので**両モードで honor** し、ユーザーの
-    // キー入力を待つ (モダン/クラシックの差はレイアウトと More 送りだけ)。
-    while (
-      out.kind === 'query' &&
-      detectMenu(out.body) === undefined &&
-      !REAL_QUESTION_RE.test(out.body.trimEnd())
-    ) {
-      await renderRichOutput(out);
-      await waitForContinue(tr('keyWaitBar'));
-      out = await engine.send('');
-    }
+    // 冒頭の引用画面・keypress 待ちは演出意図なので両モードで honor し、ユーザーの
+    // キー入力を待って進める (HELP 等のキー待ちと同じ resolveKeypresses 経路)。
+    out = await resolveKeypresses(out);
     session.pushGameOutput(out.body);
     await presentOutput(out);
     print('system', tr('inputPlaceholderExample'));

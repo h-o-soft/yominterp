@@ -285,4 +285,31 @@ describe('sendExhaustingMenus / sendResolvingPauses (自動応答ヘルパ)', ()
     await sendExhaustingMenus(engine, 'talk', 5);
     expect(engine.sent).toHaveLength(6); // talk + 自動応答 5
   });
+
+  // char 入力要求 (HELP やカットシーンの keypress 待ち) の扱い
+  const charQuery = (body: string): EngineOutput => ({
+    raw: body,
+    body,
+    kind: 'query',
+    request: 'char',
+  });
+
+  it('sendResolvingPauses: char keypress 待ち (HELP 等) は自動消化せず query で返す', async () => {
+    // 回帰防止: char 待ちを空行で自動消化すると HELP に入った瞬間にめくられて
+    // 戻れず詰む。char はユーザーがキーを押す場面なので呼び出し元 (UI) へ返す。
+    const engine = new FakeEngine(() => charQuery('Press SPACE to leave help.'));
+    const result = await sendResolvingPauses(engine, 'help');
+    expect(engine.sent).toEqual(['help']); // 自動の空行送信をしていない
+    expect(result.kind).toBe('query');
+    expect(result.request).toBe('char');
+  });
+
+  it('sendExhaustingMenus (検証用) は char keypress も従来どおり自動継続する', async () => {
+    const engine = new FakeEngine((_cmd, nth) =>
+      nth === 1 ? charQuery('Press a key.') : out('done'),
+    );
+    const result = await sendExhaustingMenus(engine, 'help');
+    expect(engine.sent).toEqual(['help', '']); // 検証は集約のため自動継続を維持
+    expect(result.body).toContain('done');
+  });
 });
