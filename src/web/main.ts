@@ -576,7 +576,7 @@ async function handleUserInput(ja: string): Promise<void> {
       const spec = activeMenu;
       let selection: string | undefined;
       const trimmed = ja.trim();
-      if (trimmed === '' || ['終わる', '終える', '終了', 'やめる'].includes(trimmed)) {
+      if (trimmed === '' || LANGUAGE_PROFILES[settings.language].endConversationWords.includes(trimmed.toLowerCase())) {
         selection = spec.enterEnds ? '' : spec.endKey;
       } else if (/^[A-Za-z0-9]{1,2}$/.test(trimmed)) {
         selection = resolveMenuKey(spec, trimmed);
@@ -606,7 +606,9 @@ async function handleUserInput(ja: string): Promise<void> {
     if (turn.error !== undefined) {
       // game 由来 (ゲーム英語) は出口翻訳に回す。app 由来は既にプレイヤー向け文言
       const msg =
-        turn.error.source === 'game' ? await translateOut(turn.error.message) : turn.error.message;
+        turn.error.source === 'game'
+          ? await translateOut(turn.error.message)
+          : tr(turn.error.code === 'noCommands' ? 'appNoCommands' : 'appNoCommands');
       print('system', msg);
     }
     if (turn.aborted) print('cmd', tr('abortedRest'));

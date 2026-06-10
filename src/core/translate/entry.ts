@@ -178,12 +178,85 @@ export interface EntryTranslatorOptions {
   language?: LanguageCode;
 }
 
+/**
+ * 入口の補助プロンプト (LLM への命令)。ja は現状の日本語 (不変)、en は多言語
+ * モデルに普遍的に効く英語。プレイヤー言語の auxPromptLang で選ぶ。
+ */
+interface AuxPrompts {
+  retryNormal: string;
+  retryMeta: string;
+  recentLabel: string;
+  inputLabel: string;
+  situationLabel: string;
+  instructionLabel: string;
+  failedLine: (cmd: string) => string;
+  parserErrorLine: (err: string) => string;
+  triedLine: (list: string) => string;
+  retranslateBody: string;
+  menuSelectorSystem: string;
+  menuLabel: string;
+  menuInputLabel: string;
+}
+
+const AUX_PROMPTS: Record<'ja' | 'en', AuxPrompts> = {
+  ja: {
+    retryNormal: 'コマンド行のみを出力し直せ。説明は不要。1 行 1 コマンド。',
+    retryMeta:
+      'quit や save などの meta コマンドではなく、プレイヤーの行動を表すコマンド行のみを出力し直せ。説明は不要。',
+    recentLabel: '[直近のゲーム出力]',
+    inputLabel: '[プレイヤー入力]',
+    situationLabel: '[状況]',
+    instructionLabel: '[指示]',
+    failedLine: (cmd) => `変換したコマンド「${cmd}」はパーサに拒否された。`,
+    parserErrorLine: (err) => `パーサのエラー: ${err}`,
+    triedLine: (list) => `失敗済みコマンド (再提案禁止): ${list}`,
+    retranslateBody:
+      'プレイヤーの意図はそのままに、語彙・言い回しだけを変えたコマンドを出力し直せ。\n' +
+      '- 動詞の意味を変えてはならない (例: 「戦う」を talk や look の行動に置き換えるのは禁止)。\n' +
+      '- 対象を勝手に別の物に変えてはならない。\n' +
+      '- ゲームの辞書で同じ意図を表せないなら、コマンドを出さず GIVEUP とだけ出力せよ。\n' +
+      '1 行 1 コマンド。説明は不要。',
+    menuSelectorSystem:
+      'あなたはゲームの会話メニューの選択器である。メニュー (番号または文字の選択肢) と' +
+      'プレイヤーの日本語指示が与えられる。指示に最も合う選択肢の**キーだけ** (例: 1, 2, A, B) を' +
+      '出力する。会話を終える・立ち去る意図なら END とだけ出力する。説明・記号・引用符は書かない。',
+    menuLabel: '[メニュー]',
+    menuInputLabel: '[プレイヤー指示]',
+  },
+  en: {
+    retryNormal: 'Output only command lines. No explanation. One command per line.',
+    retryMeta:
+      "Output only command lines for the player's action, not meta-commands like quit or save. No explanation.",
+    recentLabel: '[Recent game output]',
+    inputLabel: '[Player input]',
+    situationLabel: '[Situation]',
+    instructionLabel: '[Instruction]',
+    failedLine: (cmd) => `The command "${cmd}" was rejected by the parser.`,
+    parserErrorLine: (err) => `Parser error: ${err}`,
+    triedLine: (list) => `Already-failed commands (do not propose again): ${list}`,
+    retranslateBody:
+      "Keep the player's intent unchanged; only rephrase the vocabulary/wording of the command.\n" +
+      '- Do not change the verb meaning (e.g. do not turn "fight" into talk or look).\n' +
+      '- Do not switch the target to a different object.\n' +
+      "- If the game's dictionary cannot express the same intent, output nothing but GIVEUP.\n" +
+      'One command per line. No explanation.',
+    menuSelectorSystem:
+      "You are a selector for the game's conversation menu. You are given the menu (numbered or " +
+      "lettered choices) and the player's instruction. Output ONLY the key of the best-matching " +
+      'choice (e.g. 1, 2, A, B). If the intent is to end or leave the conversation, output only END. ' +
+      'No explanation, symbols, or quotes.',
+    menuLabel: '[Menu]',
+    menuInputLabel: '[Player instruction]',
+  },
+};
+
 export class EntryTranslator {
   private systemPrompt = '';
   private fewshot: FewShotExample[] = [];
   private dictSet: Set<string> = new Set();
   /** 辞書の切り詰め語長 (実辞書の最大語長から判定: v3=6, v4+=9) */
   private dictWordLen = 9;
+  private readonly aux: AuxPrompts;
   private readonly logger: EventLogger;
 
   constructor(
@@ -192,6 +265,8 @@ export class EntryTranslator {
     private readonly opts: EntryTranslatorOptions,
   ) {
     this.logger = opts.logger ?? NULL_LOGGER;
+    // 補助プロンプトの言語 (ja=日本語/他=英語)。ja は現状不変
+    this.aux = AUX_PROMPTS[LANGUAGE_PROFILES[opts.language ?? DEFAULT_LANGUAGE].auxPromptLang];
   }
 
   async init(vocab: GameVocabulary): Promise<void> {
@@ -241,10 +316,7 @@ export class EntryTranslator {
     const first = await this.chatEntry(messages);
     let { kept, dropped } = this.extractCommands(first, jaInput);
     if (kept.length === 0) {
-      const instruction =
-        dropped.length > 0
-          ? 'quit や save などの meta コマンドではなく、プレイヤーの行動を表すコマンド行のみを出力し直せ。説明は不要。'
-          : 'コマンド行のみを出力し直せ。説明は不要。1 行 1 コマンド。';
+      const instruction = dropped.length > 0 ? this.aux.retryMeta : this.aux.retryNormal;
       const retryMessages: ChatMessage[] = [
         ...messages,
         { role: 'assistant', content: first },
@@ -271,18 +343,14 @@ export class EntryTranslator {
         role: 'user',
         content:
           this.formatUser(this.recentText(req.recent), req.jaInput) +
-          '\n\n[状況]\n' +
-          `変換したコマンド「${req.failedCommand}」はパーサに拒否された。\n` +
-          `パーサのエラー: ${req.parserError}\n` +
+          `\n\n${this.aux.situationLabel}\n` +
+          this.aux.failedLine(req.failedCommand) + '\n' +
+          this.aux.parserErrorLine(req.parserError) + '\n' +
           (req.triedCommands.length > 0
-            ? `失敗済みコマンド (再提案禁止): ${req.triedCommands.join(' / ')}\n`
+            ? this.aux.triedLine(req.triedCommands.join(' / ')) + '\n'
             : '') +
-          '[指示]\n' +
-          'プレイヤーの意図はそのままに、語彙・言い回しだけを変えたコマンドを出力し直せ。\n' +
-          '- 動詞の意味を変えてはならない (例: 「戦う」を talk や look の行動に置き換えるのは禁止)。\n' +
-          '- 対象を勝手に別の物に変えてはならない。\n' +
-          '- ゲームの辞書で同じ意図を表せないなら、コマンドを出さず GIVEUP とだけ出力せよ。\n' +
-          '1 行 1 コマンド。説明は不要。',
+          `${this.aux.instructionLabel}\n` +
+          this.aux.retranslateBody,
       },
     ];
     const raw = await this.chatEntry(messages);
@@ -305,14 +373,11 @@ export class EntryTranslator {
     const messages: ChatMessage[] = [
       {
         role: 'system',
-        content:
-          'あなたはゲームの会話メニューの選択器である。メニュー (番号または文字の選択肢) と' +
-          'プレイヤーの日本語指示が与えられる。指示に最も合う選択肢の**キーだけ** (例: 1, 2, A, B) を' +
-          '出力する。会話を終える・立ち去る意図なら END とだけ出力する。説明・記号・引用符は書かない。',
+        content: this.aux.menuSelectorSystem,
       },
       {
         role: 'user',
-        content: `[メニュー]\n${menuBody}\n\n[プレイヤー指示]\n${jaInput}`,
+        content: `${this.aux.menuLabel}\n${menuBody}\n\n${this.aux.menuInputLabel}\n${jaInput}`,
       },
     ];
     const res = (await this.chatEntry(messages)).trim();
@@ -344,7 +409,9 @@ export class EntryTranslator {
 
   private formatUser(context: string, ja: string): string {
     const ctx = context.trim();
-    return (ctx !== '' ? `[直近のゲーム出力]\n${ctx}\n\n` : '') + `[プレイヤー入力]\n${ja}`;
+    return (
+      (ctx !== '' ? `${this.aux.recentLabel}\n${ctx}\n\n` : '') + `${this.aux.inputLabel}\n${ja}`
+    );
   }
 
   private recentText(recent: TurnContext[]): string {

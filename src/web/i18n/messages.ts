@@ -80,7 +80,8 @@ export type MessageKey =
   | 'urlLoadFail'
   | 'connectOk'
   | 'connectOkChat'
-  | 'connectNg';
+  | 'connectNg'
+  | 'appNoCommands';
 
 type Catalog = Record<MessageKey, string>;
 
@@ -159,6 +160,7 @@ const ja: Catalog = {
   connectOk: '接続 OK (モデル {n} 件)',
   connectOkChat: '接続 OK (chat 疎通)',
   connectNg: '{err}',
+  appNoCommands: 'LLM がコマンドを生成できませんでした。別の言い方を試してください。',
 };
 
 const fr: Catalog = {
@@ -238,6 +240,7 @@ const fr: Catalog = {
   connectOk: 'Connexion OK ({n} modèles)',
   connectOkChat: 'Connexion OK (chat)',
   connectNg: '{err}',
+  appNoCommands: 'Le LLM n’a pas pu générer de commande. Essayez une autre formulation.',
 };
 
 const es: Catalog = {
@@ -317,6 +320,7 @@ const es: Catalog = {
   connectOk: 'Conexión OK ({n} modelos)',
   connectOkChat: 'Conexión OK (chat)',
   connectNg: '{err}',
+  appNoCommands: 'El LLM no pudo generar un comando. Prueba con otra formulación.',
 };
 
 const de: Catalog = {
@@ -396,6 +400,7 @@ const de: Catalog = {
   connectOk: 'Verbindung OK ({n} Modelle)',
   connectOkChat: 'Verbindung OK (Chat)',
   connectNg: '{err}',
+  appNoCommands: 'Das LLM konnte keinen Befehl erzeugen. Versuche eine andere Formulierung.',
 };
 
 const ptBR: Catalog = {
@@ -475,6 +480,7 @@ const ptBR: Catalog = {
   connectOk: 'Conexão OK ({n} modelos)',
   connectOkChat: 'Conexão OK (chat)',
   connectNg: '{err}',
+  appNoCommands: 'O LLM não conseguiu gerar um comando. Tente outra formulação.',
 };
 
 const CATALOGS: Record<LanguageCode, Catalog> = { ja, es, fr, de, 'pt-BR': ptBR };

@@ -71,6 +71,16 @@ export interface LanguageProfile {
    * [英コマンドにマッチする RegExp, プレイヤー言語の意図キーワード RegExp][]
    */
   metaIntent: [RegExp, RegExp][];
+  /**
+   * 入口の補助プロンプト (retry/retranslate/メニュー選択器・文脈ラベル) の言語。
+   * - 'ja': 日本語 (既定・既存挙動を一切変えない)
+   * - 'en': 英語 (多言語モデルに普遍的に効く命令文)。非日本語はこちら。
+   * 補助プロンプトは「LLM への命令」なので、ターゲット言語そのものより
+   * モデルが確実に理解する言語にする方が品質が安定する。
+   */
+  auxPromptLang: 'ja' | 'en';
+  /** メニューで会話を終える意図のキーワード (プレイヤー言語・小文字照合) */
+  endConversationWords: string[];
 }
 
 /** ja の META_INTENT (日本語キーワード) — 既存挙動を変えないため exit/entry から移設 */
@@ -103,7 +113,8 @@ const DE_META_INTENT: [RegExp, RegExp][] = [
   [/^restart$/, /neu ?starten|von vorne|neustart/i],
   [/^restore$/, /laden|wiederherstellen|fortsetzen|spielstand/i],
   [/^save$/, /speichern|sichern/i],
-  [/^undo$/, /rückgängig|zurücknehmen|zurück/i],
+  // 「zurück」単独は移動の「戻る」と衝突するため undo の語彙から外す (Codex 指摘)
+  [/^undo$/, /rückgängig|zurücknehmen|widerrufen/i],
 ];
 
 const PT_META_INTENT: [RegExp, RegExp][] = [
@@ -115,9 +126,29 @@ const PT_META_INTENT: [RegExp, RegExp][] = [
 ];
 
 export const LANGUAGE_PROFILES: Record<LanguageCode, LanguageProfile> = {
-  ja: { code: 'ja', label: '日本語', glossary: 'katakana', metaIntent: JA_META_INTENT },
-  es: { code: 'es', label: 'Español', glossary: 'none', metaIntent: ES_META_INTENT },
-  fr: { code: 'fr', label: 'Français', glossary: 'none', metaIntent: FR_META_INTENT },
-  de: { code: 'de', label: 'Deutsch', glossary: 'none', metaIntent: DE_META_INTENT },
-  'pt-BR': { code: 'pt-BR', label: 'Português (Brasil)', glossary: 'none', metaIntent: PT_META_INTENT },
+  ja: {
+    code: 'ja', label: '日本語', glossary: 'katakana', metaIntent: JA_META_INTENT,
+    auxPromptLang: 'ja',
+    endConversationWords: ['終わる', '終える', '終了', 'やめる'],
+  },
+  es: {
+    code: 'es', label: 'Español', glossary: 'none', metaIntent: ES_META_INTENT,
+    auxPromptLang: 'en',
+    endConversationWords: ['terminar', 'salir', 'irse', 'adiós', 'fin'],
+  },
+  fr: {
+    code: 'fr', label: 'Français', glossary: 'none', metaIntent: FR_META_INTENT,
+    auxPromptLang: 'en',
+    endConversationWords: ['terminer', 'quitter', 'partir', 'au revoir', 'fin'],
+  },
+  de: {
+    code: 'de', label: 'Deutsch', glossary: 'none', metaIntent: DE_META_INTENT,
+    auxPromptLang: 'en',
+    endConversationWords: ['beenden', 'schließen', 'verlassen', 'tschüss', 'ende'],
+  },
+  'pt-BR': {
+    code: 'pt-BR', label: 'Português (Brasil)', glossary: 'none', metaIntent: PT_META_INTENT,
+    auxPromptLang: 'en',
+    endConversationWords: ['encerrar', 'terminar', 'sair', 'tchau', 'fim'],
+  },
 };

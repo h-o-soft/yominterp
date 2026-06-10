@@ -130,3 +130,53 @@ describe('多言語: 入口プロンプト/few-shot の言語別解決と fail c
     await expect(makeEntry('de').init(vocab)).rejects.toThrow(/entry\.system\.de\.md/);
   });
 });
+
+import { LANGUAGE_PROFILES } from '../src/core/i18n/language.js';
+
+describe('多言語: 補助プロンプト言語・メニュー終了語・error code', () => {
+  it('auxPromptLang は ja=ja / 他=en', () => {
+    expect(LANGUAGE_PROFILES.ja.auxPromptLang).toBe('ja');
+    expect(LANGUAGE_PROFILES.fr.auxPromptLang).toBe('en');
+    expect(LANGUAGE_PROFILES.es.auxPromptLang).toBe('en');
+    expect(LANGUAGE_PROFILES.de.auxPromptLang).toBe('en');
+    expect(LANGUAGE_PROFILES['pt-BR'].auxPromptLang).toBe('en');
+  });
+
+  it('endConversationWords は言語別 (ja=日本語, 他=各言語)', () => {
+    expect(LANGUAGE_PROFILES.ja.endConversationWords).toContain('終わる');
+    expect(LANGUAGE_PROFILES.fr.endConversationWords).toContain('terminer');
+    expect(LANGUAGE_PROFILES.de.endConversationWords).toContain('beenden');
+  });
+
+  it('非 ja entry の補助プロンプト (retry) が英語になる', async () => {
+    // chatEntry をフックして retry instruction を捕捉
+    const captured: string[] = [];
+    const transport: LLMTransport = {
+      post: async (_p, body) => {
+        const msgs = (body as { messages: { content: string }[] }).messages;
+        captured.push(msgs[msgs.length - 1]!.content);
+        return { choices: [{ message: { content: '' } }] }; // 空応答 → retry を誘発
+      },
+      get: async () => ({}),
+    };
+    const llm = new LLMClient(transport, { model: 'm', temperature: 0, maxTokens: 100, timeoutMs: 1000 });
+    const fr = new EntryTranslator(llm, MULTILANG_PROMPTS, { contextTurns: 2, language: 'fr' });
+    await fr.init({ dictWords: ['look'], objectNames: [] });
+    await fr.translate('regarder', []);
+    // retry instruction (最後の user メッセージ) が英語 (Output only command lines)
+    expect(captured.some((c) => /Output only command lines/.test(c))).toBe(true);
+    expect(captured.some((c) => /コマンド行のみ/.test(c))).toBe(false);
+  });
+});
+
+describe('多言語: de の zurück が undo と衝突しない', () => {
+  it('「戻る (zurück)」の文だけでは undo が drop されない', async () => {
+    const { filterUnintendedMetas } = await import('../src/core/translate/entry.js');
+    // de で「zurück」を含む通常入力では undo 意図と見なさない (undo は別語彙)
+    const r = filterUnintendedMetas(['undo'], 'geh zurück', 'de');
+    expect(r.dropped).toContain('undo'); // zurück 単独は undo 意図でない → drop
+    // 明示的な undo 語彙ならば通る
+    const r2 = filterUnintendedMetas(['undo'], 'mach das rückgängig', 'de');
+    expect(r2.kept).toContain('undo');
+  });
+});

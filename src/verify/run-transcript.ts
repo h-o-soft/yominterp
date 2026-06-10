@@ -127,7 +127,7 @@ function classifyStep(
   const last = turn.results[turn.results.length - 1];
   const actualRoom = last !== undefined ? roomScore(last.output.statusLine, last.output.body).room : null;
   if (turn.error !== undefined) {
-    return { cls: 'fail-parser', near: false, actualRoom, detail: turn.error.message };
+    return { cls: 'fail-parser', near: false, actualRoom, detail: turn.error.source === 'game' ? turn.error.message : turn.error.code };
   }
   const aggregated = turn.results.map((r) => r.output.body).join('\n\n');
   const a = normalizeForCompare(aggregated);
