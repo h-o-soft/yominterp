@@ -122,3 +122,28 @@ test('設定に言語セレクタ (5言語・既定ja) と実験的注意書き�
   await expect(page.locator('#set-language')).toHaveValue('ja'); // 既定
   await expect(page.locator('#lang-note')).toContainText('実験的');
 });
+
+test('原文ビューの本文段落 (p.raw) はクラシックでも折り返す (white-space: pre-wrap)', async ({
+  page,
+}) => {
+  // 原文トグル表示が wrap せず横はみ出していた回帰の防止。実描画の white-space と
+  // はみ出しで確認する (要素数でなく実レンダリング)。
+  await page.goto('/');
+  await page.getByRole('button', { name: '閉じる' }).click();
+  await expect(page.locator('body')).toHaveClass(/classic/); // クラシック既定
+  const result = await page.evaluate(() => {
+    const t = document.getElementById('terminal')!;
+    const p = document.createElement('p');
+    p.className = 'raw';
+    p.textContent = 'word '.repeat(80); // 枠幅を超える長い 1 行 (単語区切り = pre-wrap が折れる)
+    t.appendChild(p);
+    const ws = getComputedStyle(p).whiteSpace;
+    const overflow = p.scrollWidth > p.getBoundingClientRect().width + 2;
+    const multiline = p.getBoundingClientRect().height > 30; // 折り返して複数行
+    p.remove();
+    return { ws, overflow, multiline };
+  });
+  expect(result.ws).toBe('pre-wrap'); // クラシックの p{pre} を上書きできている
+  expect(result.overflow).toBe(false); // 横にはみ出さない
+  expect(result.multiline).toBe(true); // 折り返して複数行になる
+});
