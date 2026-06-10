@@ -67,6 +67,15 @@
           <small>対応: .z3 .z4 .z5 .z8 .zblorb (Glulx は今後対応予定)</small>
         </fieldset>
         <fieldset>
+          <legend>プレイ言語</legend>
+          <label>言語 <select id="set-language"></select></label>
+          <small id="lang-note">
+            ⚠ 多言語は<strong>実験的機能</strong>です。翻訳の品質は使う LLM のモデルに大きく依存します。
+            既定は日本語。日本語以外を選ぶと入力・ゲーム表示がその言語になります (メニュー等の UI 文言は当面日本語のまま)。
+            <strong>変更は次に開くゲームから反映</strong>されます。
+          </small>
+        </fieldset>
+        <fieldset>
           <legend>その他</legend>
           <button type="button" id="btn-download-log">ログをダウンロード</button>
           <small id="about">

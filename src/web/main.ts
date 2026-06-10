@@ -44,6 +44,12 @@ import {
 } from './ui/render.js';
 import type { EngineOutput, SpanStyle, StyledBlock, StyledLine } from '../core/engine.js';
 import { uniformStyle } from '../core/engine.js';
+import {
+  DEFAULT_LANGUAGE,
+  LANGUAGE_PROFILES,
+  SUPPORTED_LANGUAGES,
+  isLanguageCode,
+} from '../core/i18n/language.js';
 
 // ---- DOM ----
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
@@ -703,6 +709,15 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
 
 // ---- 設定ダイアログ ----
 
+/**
+ * <html lang> をプレイ言語に合わせる。ただし UI 文言は当面日本語のままなので
+ * (フェーズC で i18n)、ゲーム本文領域 (#terminal) の lang だけ切り替え、
+ * document 全体は ja のままにして UI=ja / 本文=選択言語 の混在を厳密にする。
+ */
+function applyHtmlLang(): void {
+  terminal.setAttribute('lang', settings.language);
+}
+
 function wireSettings(): void {
   const dialog = $<HTMLDialogElement>('settings-dialog');
   const baseUrl = $<HTMLInputElement>('set-baseurl');
@@ -711,6 +726,14 @@ function wireSettings(): void {
   const model = $<HTMLInputElement>('set-model');
   const modelList = $<HTMLDataListElement>('model-list');
   const testResult = $('test-result');
+  const langSelect = $<HTMLSelectElement>('set-language');
+  // 言語セレクタを LANGUAGE_PROFILES から生成 (既定 ja)
+  for (const code of SUPPORTED_LANGUAGES) {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = LANGUAGE_PROFILES[code].label;
+    langSelect.appendChild(opt);
+  }
 
   const commit = () => {
     settings = {
@@ -719,8 +742,10 @@ function wireSettings(): void {
       apiKey: apiKey.value.trim(),
       persistKey: persist.checked,
       model: model.value.trim(),
+      language: isLanguageCode(langSelect.value) ? langSelect.value : DEFAULT_SETTINGS.language,
     };
     saveSettings(settings);
+    applyHtmlLang();
   };
 
   $('btn-settings').addEventListener('click', () => {
@@ -728,11 +753,12 @@ function wireSettings(): void {
     apiKey.value = settings.apiKey;
     persist.checked = settings.persistKey;
     model.value = settings.model;
+    langSelect.value = settings.language;
     testResult.textContent = '';
     dialog.showModal();
   });
   // close イベントだけに依存せず、変更の都度コミットする (取りこぼし防止)
-  for (const el of [baseUrl, apiKey, model]) el.addEventListener('change', commit);
+  for (const el of [baseUrl, apiKey, model, langSelect]) el.addEventListener('change', commit);
   persist.addEventListener('change', commit);
   dialog.addEventListener('close', commit);
 
@@ -884,6 +910,7 @@ function showWelcome(): void {
 
 wireSettings();
 wireTopbar();
+applyHtmlLang();
 showWelcome();
 
 /**

@@ -111,3 +111,14 @@ test('接続テストは到達不能 endpoint でエラーを表示する', asyn
   await expect(page.locator('#test-result')).toHaveClass('ng', { timeout: 30000 });
   await expect(page.locator('#test-result')).not.toHaveText('');
 });
+
+test('設定に言語セレクタ (5言語・既定ja) と実験的注意書きがある', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '閉じる' }).click();
+  await page.locator('#btn-menu').click();
+  await page.locator('#topbar-menu #btn-settings').click();
+  const opts = page.locator('#set-language option');
+  await expect(opts).toHaveCount(5);
+  await expect(page.locator('#set-language')).toHaveValue('ja'); // 既定
+  await expect(page.locator('#lang-note')).toContainText('実験的');
+});
