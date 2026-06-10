@@ -3,6 +3,7 @@
  * 環境変数: YOMINTERP_BASE_URL / YOMINTERP_API_KEY / YOMINTERP_MODEL / YOMINTERP_ENTRY_MODEL /
  *           YOMINTERP_EXIT_MODEL / YOMINTERP_STORY / YOMINTERP_SEED
  */
+import { type LanguageCode, coerceLanguage } from '../core/i18n/language.js';
 import { existsSync, readFileSync } from 'node:fs';
 import type { LLMConfig } from '../core/llm/client.js';
 
@@ -36,6 +37,8 @@ export interface AppConfig {
   };
   cacheDir: string;
   logDir: string;
+  /** プレイヤー言語 (既定 ja)。多言語は実験的オプション */
+  language?: LanguageCode;
 }
 
 /** AppConfig.llm → core の LLMConfig (null を undefined に正規化) */
@@ -64,5 +67,8 @@ export function loadConfig(path?: string): AppConfig {
   if (env.YOMINTERP_EXIT_MODEL) cfg.llm.exitModel = env.YOMINTERP_EXIT_MODEL;
   if (env.YOMINTERP_STORY) cfg.engine.storyFile = env.YOMINTERP_STORY;
   if (env.YOMINTERP_SEED) cfg.engine.seed = Number(env.YOMINTERP_SEED);
+  if (env.YOMINTERP_LANG) cfg.language = env.YOMINTERP_LANG as LanguageCode;
+  // 許可リスト外の言語は起動時エラー (silent fallback はしない)
+  cfg.language = coerceLanguage(cfg.language);
   return cfg;
 }

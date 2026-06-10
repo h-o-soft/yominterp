@@ -2,6 +2,8 @@
  * セーブの永続化 (SaveStore の IndexedDB 実装) とスロット選択 UI (DialogPort 実装)。
  * キー = storyId (SHA-256 + 形式) + スロット名 (plan.md 段階2 §5)。
  */
+import type { LanguageCode } from '../core/i18n/language.js';
+import { t } from './i18n/messages.js';
 import { del as idbDel, get as idbGet, keys as idbKeys, set as idbSet } from 'idb-keyval';
 import type { DialogPort, SaveStore } from './engine/dialog.js';
 
@@ -34,6 +36,9 @@ export class IdbSaveStore implements SaveStore {
 
 /** <dialog> ベースのスロット選択 (save: 名前入力+既存上書き / restore: 既存から選択) */
 export class ModalDialogPort implements DialogPort {
+  /** 現在の UI 言語を返す関数 (言語変更に追従) */
+  constructor(private readonly getLang: () => LanguageCode = () => 'ja') {}
+
   requestSaveSlot(mode: 'save' | 'restore', existing: string[]): Promise<string | null> {
     const dialog = document.getElementById('save-dialog') as HTMLDialogElement;
     const title = document.getElementById('save-title')!;
@@ -42,7 +47,8 @@ export class ModalDialogPort implements DialogPort {
     const nameInput = document.getElementById('save-name') as HTMLInputElement;
     const okButton = document.getElementById('save-ok') as HTMLButtonElement;
 
-    title.textContent = mode === 'save' ? 'セーブ' : 'ロード';
+    const lang = this.getLang();
+    title.textContent = mode === 'save' ? t(lang, 'saveTitle') : t(lang, 'loadTitle');
     nameRow.hidden = mode === 'restore';
     okButton.hidden = mode === 'restore';
     slots.innerHTML = '';
@@ -57,14 +63,14 @@ export class ModalDialogPort implements DialogPort {
       };
 
       if (mode === 'restore' && existing.length === 0) {
-        slots.textContent = '(セーブデータがありません)';
+        slots.textContent = t(lang, 'noSaves');
       }
       for (const name of existing) {
         const b = document.createElement('button');
         b.type = 'button';
         // 保存名は拡張子付き (例: slot1.glksave) — 表示は拡張子なし
         const display = name.replace(/\.(glksave|qzl|sav)$/i, '');
-        b.textContent = mode === 'save' ? `上書き: ${display}` : display;
+        b.textContent = mode === 'save' ? t(lang, 'overwrite', { name: display }) : display;
         b.addEventListener('click', () => settle(display));
         slots.appendChild(b);
       }

@@ -10,7 +10,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https: http:; object-src 'none'; base-uri 'none'"
     />
-    <title>yominterp — 英語IFを日本語で遊ぶ</title>
+    <title data-i18n="docTitle">yominterp — 英語IFを日本語で遊ぶ</title>
     <link rel="stylesheet" href="/src/web/style.css" />
   </head>
   <body>
@@ -18,75 +18,84 @@
       <!-- 上部バーはゲームのステータスライン専用 (場所名 + 右寄せ情報を省略せず全幅で)。
            アプリ操作の☰メニューは下部 (入力バー) に置き、ステータスと衝突させない -->
       <header id="topbar">
-        <div id="status-line" title="ステータス行 (場所名・得点・手数 等)">
+        <div id="status-line" data-i18n-title="statusTitle" title="ステータス行 (場所名・得点・手数 等)">
           <span id="status-left"></span>
           <span id="status-right"></span>
         </div>
       </header>
-      <nav id="topbar-menu" hidden aria-label="メニュー">
-        <button id="btn-open-top">📂 開く…</button>
-        <button id="btn-raw">原文の表示</button>
-        <button id="btn-layout">表示モード (クラシック/モダン)</button>
-        <button id="btn-save">セーブ</button>
-        <button id="btn-restore">ロード</button>
-        <button id="btn-settings">設定…</button>
+      <nav id="topbar-menu" hidden data-i18n-aria="menuTitle" aria-label="メニュー">
+        <button id="btn-open-top" data-i18n="menuOpen">📂 開く…</button>
+        <button id="btn-raw" data-i18n="menuRaw">原文の表示</button>
+        <button id="btn-layout" data-i18n="menuLayout">表示モード (クラシック/モダン)</button>
+        <button id="btn-save" data-i18n="menuSave">セーブ</button>
+        <button id="btn-restore" data-i18n="menuRestore">ロード</button>
+        <button id="btn-settings" data-i18n="menuSettings">設定…</button>
       </nav>
       <main id="terminal" aria-live="polite"></main>
       <footer id="inputbar">
         <div id="choices" hidden></div>
         <form id="input-form">
-          <button id="btn-menu" type="button" class="hamburger" title="メニュー" aria-haspopup="true" aria-expanded="false">☰</button>
+          <button id="btn-menu" type="button" class="hamburger" data-i18n-title="menuTitle" title="メニュー" aria-haspopup="true" aria-expanded="false">☰</button>
           <span id="prompt-mark">&gt;</span>
-          <input id="input" autocomplete="off" placeholder="日本語で指示してください" disabled />
-          <button id="btn-send" disabled>送信</button>
+          <input id="input" autocomplete="off" data-i18n-placeholder="inputPlaceholder" placeholder="日本語で指示してください" disabled />
+          <button id="btn-send" data-i18n="send" disabled>送信</button>
         </form>
       </footer>
     </div>
 
     <dialog id="settings-dialog">
       <form method="dialog" id="settings-form">
-        <h2>設定</h2>
+        <h2 data-i18n="settingsTitle">設定</h2>
         <fieldset>
-          <legend>LLM 接続 (OpenAI 互換)</legend>
-          <label>Base URL <input id="set-baseurl" placeholder="http://127.0.0.1:1234/v1" /></label>
+          <legend data-i18n="llmConnection">LLM 接続 (OpenAI 互換)</legend>
+          <label><span data-i18n="baseUrlLabel">Base URL</span> <input id="set-baseurl" placeholder="http://127.0.0.1:1234/v1" /></label>
           <label
-            >API Key <input id="set-apikey" type="password" autocomplete="off" />
-            <small><label><input type="checkbox" id="set-persistkey" />このブラウザに保存する (既定はメモリのみ。共有PCでは保存しないでください)</label></small>
+            ><span data-i18n="apiKeyLabel">API Key</span> <input id="set-apikey" type="password" autocomplete="off" />
+            <small><label><input type="checkbox" id="set-persistkey" /><span data-i18n="apiKeyPersist">このブラウザに保存する (既定はメモリのみ。共有PCでは保存しないでください)</span></label></small>
           </label>
-          <label>モデル <input id="set-model" list="model-list" /><datalist id="model-list"></datalist></label>
-          <button type="button" id="btn-test">接続テスト</button>
+          <label><span data-i18n="modelLabel">モデル</span> <input id="set-model" list="model-list" /><datalist id="model-list"></datalist></label>
+          <button type="button" id="btn-test" data-i18n="connectionTest">接続テスト</button>
           <span id="test-result"></span>
         </fieldset>
         <fieldset>
-          <legend>ゲーム</legend>
+          <legend data-i18n="gameSection">ゲーム</legend>
           <div id="game-buttons">
-            <button type="button" id="btn-open">ファイルを開く…</button>
-            <button type="button" id="btn-open-url">URLから開く…</button>
+            <button type="button" id="btn-open" data-i18n="openFile">ファイルを開く…</button>
+            <button type="button" id="btn-open-url" data-i18n="openUrl">URLから開く…</button>
             <input type="file" id="file-input" accept=".z3,.z4,.z5,.z8,.zblorb,.ulx,.gblorb" hidden />
           </div>
-          <small>対応: .z3 .z4 .z5 .z8 .zblorb (Glulx は今後対応予定)</small>
+          <small data-i18n="formatSupport">対応: .z3 .z4 .z5 .z8 .zblorb (Glulx は今後対応予定)</small>
         </fieldset>
         <fieldset>
-          <legend>その他</legend>
-          <button type="button" id="btn-download-log">ログをダウンロード</button>
-          <small id="about">
+          <legend data-i18n="playLanguage">プレイ言語</legend>
+          <label><span data-i18n="languageLabel">言語</span> <select id="set-language"></select></label>
+          <small id="lang-note" data-i18n="betaNotice">
+            ⚠ 多言語は<strong>実験的機能</strong>です。翻訳の品質は使う LLM のモデルに大きく依存します。
+            既定は日本語。日本語以外を選ぶと入力・ゲーム表示がその言語になります (メニュー等の UI 文言は当面日本語のまま)。
+            <strong>変更は次に開くゲームから反映</strong>されます。
+          </small>
+        </fieldset>
+        <fieldset>
+          <legend data-i18n="otherSection">その他</legend>
+          <button type="button" id="btn-download-log" data-i18n="downloadLog">ログをダウンロード</button>
+          <small id="about" data-i18n="aboutText">
             VM: emglken (Bocfel/Glulxe — MIT)。本アプリは MIT ライセンスで、ゲームファイルはユーザーが用意します。
           </small>
         </fieldset>
         <menu>
-          <button value="cancel">閉じる</button>
+          <button value="cancel" data-i18n="close">閉じる</button>
         </menu>
       </form>
     </dialog>
 
     <dialog id="save-dialog">
       <form method="dialog">
-        <h2 id="save-title">セーブ</h2>
+        <h2 id="save-title" data-i18n="saveTitle">セーブ</h2>
         <div id="save-slots"></div>
-        <label id="save-name-row">名前 <input id="save-name" placeholder="slot1" /></label>
+        <label id="save-name-row"><span data-i18n="nameLabel">名前</span> <input id="save-name" placeholder="slot1" /></label>
         <menu>
-          <button value="ok" id="save-ok">決定</button>
-          <button value="cancel">キャンセル</button>
+          <button value="ok" id="save-ok" data-i18n="ok">決定</button>
+          <button value="cancel" data-i18n="cancel">キャンセル</button>
         </menu>
       </form>
     </dialog>

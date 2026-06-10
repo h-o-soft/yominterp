@@ -200,7 +200,8 @@ describe('キー待ち/クリアのモード非依存契約', () => {
   });
   it('冒頭キー待ちループは classicMode 条件なしで waitForContinue を呼ぶ', () => {
     const loop = main.slice(main.indexOf('冒頭の pause/引用画面'), main.indexOf('冒頭の pause/引用画面') + 400);
-    expect(loop).toContain("waitForContinue('—— キーを押して続行 ——')");
+    // i18n 化で文言は tr('keyWaitBar') 経由 (カタログの keyWaitBar が「キーを押して続行」)
+    expect(loop).toContain("waitForContinue(tr('keyWaitBar'))");
     expect(loop).not.toMatch(/if \(settings\.classicMode\)\s*\{\s*await waitForContinue/);
   });
 });

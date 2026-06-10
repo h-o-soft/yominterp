@@ -47,11 +47,23 @@ export interface CommandResult {
   retries: number;
 }
 
+/**
+ * ターンで表面化したエラーの出自。
+ * - 'game': ゲーム (英語) のパーサエラー等。**出口翻訳に回す** (プレイヤー言語へ訳す)。
+ * - 'app': アプリ/core 由来のメッセージ。**既にプレイヤー向け文言なので翻訳しない**。
+ * 文字種 (非 ASCII=訳済み) で判定すると、非日本語ではローカライズ済み app 文言が
+ * ASCII のこともあり二重翻訳/誤翻訳するため、出自で判定する。
+ */
+export interface TurnError {
+  source: 'game' | 'app';
+  message: string;
+}
+
 export interface TurnResult {
   /** 確定したコマンドと出力 (送信順) */
   results: CommandResult[];
-  /** 解決できず表面化したパーサエラー等 (英語原文。CLI が和訳して提示) */
-  error?: string;
+  /** 解決できず表面化したエラー (出自付き)。source で翻訳要否を判定する */
+  error?: TurnError;
   /** 残りコマンドの破棄が起きたか */
   aborted: boolean;
   gameOver: boolean;
@@ -169,7 +181,10 @@ export class Session {
     if (queue.length === 0) {
       return {
         results: [],
-        error: 'LLM がコマンドを生成できませんでした。別の言い方を試してください。',
+        error: {
+          source: 'app',
+          message: 'LLM がコマンドを生成できませんでした。別の言い方を試してください。',
+        },
         aborted: false,
         gameOver: false,
         llmCalls,
@@ -275,7 +290,8 @@ export class Session {
       gameOver,
       llmCalls,
     };
-    if (surfacedError !== undefined) turn.error = surfacedError;
+    // surfacedError はゲーム (英語) のパーサエラー → game 出自 (出口翻訳に回す)
+    if (surfacedError !== undefined) turn.error = { source: 'game', message: surfacedError };
     this.logger.log({
       event: 'session.turn',
       jaInput,

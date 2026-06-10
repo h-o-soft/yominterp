@@ -1,0 +1,59 @@
+[
+  {
+    "commands": [
+      "look"
+    ],
+    "input": "regarder autour"
+  },
+  {
+    "commands": [
+      "examine lamp"
+    ],
+    "input": "examiner la lampe"
+  },
+  {
+    "commands": [
+      "take lamp",
+      "north"
+    ],
+    "input": "prends la lampe et va au nord"
+  },
+  {
+    "commands": [
+      "north"
+    ],
+    "input": "aller au nord"
+  },
+  {
+    "commands": [
+      "unlock door with key"
+    ],
+    "input": "ouvrir la porte avec la clé"
+  },
+  {
+    "commands": [
+      "talk to old man"
+    ],
+    "input": "parler au vieil homme"
+  },
+  {
+    "commands": [
+      "inventory"
+    ],
+    "input": "inventaire"
+  },
+  {
+    "context": "The door is locked.",
+    "commands": [
+      "open door"
+    ],
+    "input": "l'ouvrir"
+  },
+  {
+    "context": "Do you want to quit?",
+    "commands": [
+      "yes"
+    ],
+    "input": "oui"
+  }
+]

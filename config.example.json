@@ -27,5 +27,6 @@
     "turns": 2
   },
   "cacheDir": ".cache",
-  "logDir": "logs"
+  "logDir": "logs",
+  "language": "ja"
 }

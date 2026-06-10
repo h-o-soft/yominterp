@@ -7,6 +7,12 @@
  *
  * このファイルは環境非依存 (Node API import 禁止)。
  */
+import {
+  type LanguageCode,
+  DEFAULT_LANGUAGE,
+  LANGUAGE_PROFILES,
+  promptFileName,
+} from '../i18n/language.js';
 import { type ChatMessage, type LLMClient } from '../llm/client.js';
 import type { EventLogger, PromptProvider } from '../ports.js';
 import { NULL_LOGGER } from '../ports.js';
@@ -28,8 +34,16 @@ export interface TurnContext {
 
 export interface FewShotExample {
   context?: string;
-  ja: string;
+  /** プレイヤー言語の入力例。`ja` は後方互換 (旧 fewshot.entry.json) */
+  input?: string;
+  /** @deprecated `input` を使う。旧 ja 専用 few-shot との後方互換のため残す */
+  ja?: string;
   commands: string[];
+}
+
+/** few-shot 例のプレイヤー入力文 (input 優先・ja 後方互換) */
+function exampleInput(ex: FewShotExample): string {
+  return ex.input ?? ex.ja ?? '';
 }
 
 export interface RetranslateRequest {
@@ -131,27 +145,22 @@ export function parseCandidates(text: string): string[] {
 }
 
 /**
- * 破壊的/状態を変える meta コマンドは、日本語入力にその意図が明示されている
+ * 破壊的/状態を変える meta コマンドは、プレイヤー入力にその意図が明示されている
  * 時だけ通す (通常行動の誤変換が quit 等に化けて発火するのを防ぐ)。
+ * 意図キーワードは言語別 (LANGUAGE_PROFILES[language].metaIntent)。既定 ja。
  */
-const META_INTENT: [RegExp, RegExp][] = [
-  [/^(quit|q)$/, /終了|やめ(る|たい)|終わ(る|り|らせ)|ゲームを(終|や)|クイット/],
-  [/^restart$/, /最初から|初めから|リスタート|やり直|再スタート/],
-  [/^restore$/, /ロード|リストア|復元|再開|セーブを(読|呼)/],
-  [/^save$/, /セーブ|保存/],
-  [/^undo$/, /取り消|アンドゥ|(手|ターン)を戻/],
-];
-
 export function filterUnintendedMetas(
   commands: string[],
-  jaInput: string,
+  userInput: string,
+  language: LanguageCode = DEFAULT_LANGUAGE,
 ): { kept: string[]; dropped: string[] } {
+  const metaIntent = LANGUAGE_PROFILES[language].metaIntent;
   const kept: string[] = [];
   const dropped: string[] = [];
   for (const cmd of commands) {
     const first = cmd.split(' ', 1)[0]!;
-    const meta = META_INTENT.find(([re]) => re.test(first));
-    if (meta !== undefined && !meta[1].test(jaInput)) {
+    const meta = metaIntent.find(([re]) => re.test(first));
+    if (meta !== undefined && !meta[1].test(userInput)) {
       dropped.push(cmd);
     } else {
       kept.push(cmd);
@@ -165,6 +174,8 @@ export interface EntryTranslatorOptions {
   /** 直近文脈の文字数上限 (長文ゲームでのプロンプト肥大対策)。既定 4096 */
   contextChars?: number;
   logger?: EventLogger;
+  /** プレイヤー言語 (既定 ja)。ja は無印プロンプト、他言語は接尾辞 + fail closed */
+  language?: LanguageCode;
 }
 
 export class EntryTranslator {
@@ -184,7 +195,10 @@ export class EntryTranslator {
   }
 
   async init(vocab: GameVocabulary): Promise<void> {
-    const template = await this.prompts.load('entry.system.md');
+    const lang = this.opts.language ?? DEFAULT_LANGUAGE;
+    // ja は無印 (canonical)、他言語は接尾辞。非 ja でファイルが無ければ
+    // PromptProvider.load が throw する (fail closed: 暗黙の日本語化をしない)。
+    const template = await this.prompts.load(promptFileName('entry.system.md', lang));
     const objects = usefulObjectNames(vocab.objectNames);
     this.dictWordLen = Math.max(6, ...vocab.dictWords.map((w) => w.length));
     this.systemPrompt = template
@@ -192,10 +206,17 @@ export class EntryTranslator {
       .replace('{{OBJECT_NAMES}}', objects.join(', '))
       .replaceAll('{{DICT_WORD_LEN}}', String(this.dictWordLen));
     this.dictSet = new Set(vocab.dictWords.map((w) => w.toLowerCase()));
-    try {
-      this.fewshot = JSON.parse(await this.prompts.load('fewshot.entry.json')) as FewShotExample[];
-    } catch {
-      this.fewshot = [];
+    // few-shot: ja は parse 失敗を空配列で握りつぶす (後方互換)。非 ja は
+    // missing / JSON 不正も fail closed (起動エラーへ寄せる)。
+    const fewshotName = promptFileName('fewshot.entry.json', lang);
+    if (lang === DEFAULT_LANGUAGE) {
+      try {
+        this.fewshot = JSON.parse(await this.prompts.load(fewshotName)) as FewShotExample[];
+      } catch {
+        this.fewshot = [];
+      }
+    } else {
+      this.fewshot = JSON.parse(await this.prompts.load(fewshotName)) as FewShotExample[];
     }
   }
 
@@ -206,8 +227,8 @@ export class EntryTranslator {
       // 辞書外の動詞でも形の良い行はそのまま通す (実パーサの拒否 → 自己修正へ)
       commands = parseCandidates(raw);
     }
-    // 破壊的 meta (quit 等) は日本語入力に意図がある時だけ
-    const result = filterUnintendedMetas(commands, jaInput);
+    // 破壊的 meta (quit 等) はプレイヤー入力に意図がある時だけ (言語別キーワード)
+    const result = filterUnintendedMetas(commands, jaInput, this.opts.language ?? DEFAULT_LANGUAGE);
     if (result.dropped.length > 0) {
       this.logger.log({ event: 'entry.metaDropped', jaInput, dropped: result.dropped });
     }
@@ -308,7 +329,7 @@ export class EntryTranslator {
   buildMessages(jaInput: string, recent: TurnContext[]): ChatMessage[] {
     const messages: ChatMessage[] = [{ role: 'system', content: this.systemPrompt }];
     for (const ex of this.fewshot) {
-      messages.push({ role: 'user', content: this.formatUser(ex.context ?? '', ex.ja) });
+      messages.push({ role: 'user', content: this.formatUser(ex.context ?? '', exampleInput(ex)) });
       messages.push({ role: 'assistant', content: ex.commands.join('\n') });
     }
     messages.push({ role: 'user', content: this.formatUser(this.recentText(recent), jaInput) });

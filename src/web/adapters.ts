@@ -12,12 +12,37 @@ import type { CacheStore, EventLogger, LLMTransport, PromptProvider } from '../c
 import entrySystem from '../../prompts/entry.system.md?raw';
 import exitSystem from '../../prompts/exit.system.md?raw';
 import fewshotEntry from '../../prompts/fewshot.entry.json?raw';
+// 言語別プロンプト (フェーズA: es/fr/de/pt-BR)
+import entrySystemEs from '../../prompts/entry.system.es.md?raw';
+import exitSystemEs from '../../prompts/exit.system.es.md?raw';
+import fewshotEntryEs from '../../prompts/fewshot.entry.es.json?raw';
+import entrySystemFr from '../../prompts/entry.system.fr.md?raw';
+import exitSystemFr from '../../prompts/exit.system.fr.md?raw';
+import fewshotEntryFr from '../../prompts/fewshot.entry.fr.json?raw';
+import entrySystemDe from '../../prompts/entry.system.de.md?raw';
+import exitSystemDe from '../../prompts/exit.system.de.md?raw';
+import fewshotEntryDe from '../../prompts/fewshot.entry.de.json?raw';
+import entrySystemPt from '../../prompts/entry.system.pt-BR.md?raw';
+import exitSystemPt from '../../prompts/exit.system.pt-BR.md?raw';
+import fewshotEntryPt from '../../prompts/fewshot.entry.pt-BR.json?raw';
 
 export class BundledPromptProvider implements PromptProvider {
   private readonly map: Record<string, string> = {
     'entry.system.md': entrySystem,
     'exit.system.md': exitSystem,
     'fewshot.entry.json': fewshotEntry,
+    'entry.system.es.md': entrySystemEs,
+    'exit.system.es.md': exitSystemEs,
+    'fewshot.entry.es.json': fewshotEntryEs,
+    'entry.system.fr.md': entrySystemFr,
+    'exit.system.fr.md': exitSystemFr,
+    'fewshot.entry.fr.json': fewshotEntryFr,
+    'entry.system.de.md': entrySystemDe,
+    'exit.system.de.md': exitSystemDe,
+    'fewshot.entry.de.json': fewshotEntryDe,
+    'entry.system.pt-BR.md': entrySystemPt,
+    'exit.system.pt-BR.md': exitSystemPt,
+    'fewshot.entry.pt-BR.json': fewshotEntryPt,
   };
   async load(name: string): Promise<string> {
     const found = this.map[name];

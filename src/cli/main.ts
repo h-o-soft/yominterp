@@ -6,6 +6,7 @@
  *
  * メタコマンド: /quit /raw /undo /retry /score /save /help
  */
+import { DEFAULT_LANGUAGE } from '../core/i18n/language.js';
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { parseStatusLine } from '../core/engine.js';
@@ -66,9 +67,11 @@ async function main(): Promise<void> {
   };
 
   const prompts = new FilePromptProvider(['prompts', 'fixtures']);
+  const language = cfg.language ?? DEFAULT_LANGUAGE;
   const entry = new EntryTranslator(llm, prompts, {
     contextTurns: cfg.context.turns,
     logger,
+    language,
   });
   await entry.init(vocab);
   const exit = new ExitTranslator(
@@ -76,6 +79,7 @@ async function main(): Promise<void> {
     prompts,
     new FileCacheStore(`${cfg.cacheDir}/exit-translations.json`),
     logger,
+    language,
   );
   // 固有名詞グロッサリ (Cora=コーラ 等の正準表記) をオブジェクト名から構築
   await exit.init(usefulObjectNames(vocab.objectNames));
@@ -243,8 +247,10 @@ async function main(): Promise<void> {
       menuSpec = detectMenu(out.body);
     }
     if (turn.error !== undefined) {
-      const isJa = /[^\x00-\x7f]/.test(turn.error);
-      console.log(`${YELLOW}${isJa ? turn.error : await exit.translate(turn.error)}${RESET}`);
+      // game 由来 (ゲーム英語) は出口翻訳に回す。app 由来は既にプレイヤー向け文言
+      const msg =
+        turn.error.source === 'game' ? await exit.translate(turn.error.message) : turn.error.message;
+      console.log(`${YELLOW}${msg}${RESET}`);
     }
     if (turn.aborted) {
       console.log(`${DIM}(途中で失敗したため残りの動作は中止しました)${RESET}`);

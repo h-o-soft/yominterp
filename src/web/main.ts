@@ -44,6 +44,13 @@ import {
 } from './ui/render.js';
 import type { EngineOutput, SpanStyle, StyledBlock, StyledLine } from '../core/engine.js';
 import { uniformStyle } from '../core/engine.js';
+import {
+  DEFAULT_LANGUAGE,
+  LANGUAGE_PROFILES,
+  SUPPORTED_LANGUAGES,
+  isLanguageCode,
+} from '../core/i18n/language.js';
+import { applyDomI18n, t } from './i18n/messages.js';
 
 // ---- DOM ----
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
@@ -152,7 +159,7 @@ function classicPageLines(): number {
 }
 
 const pager = new Pager(async () => {
-  await waitForContinue('—— [More] クリックまたはキーで続き ——');
+  await waitForContinue(tr('moreBar'));
   // 古典端末のページ動作: [More] で続けるとき画面をクリアして次ページを上から
   // 表示する (枠 24 行を厳守し、前ページが残って枠を超えるのを防ぐ)。
   terminal.innerHTML = '';
@@ -244,7 +251,7 @@ function showStatus(line: string | undefined, style?: SpanStyle): void {
   const parsed = parseStatusGeneric(line);
   // まず英語/数値を即表示 (翻訳待ちでブロックしない)。裏で和訳して差し替える
   if ('room' in parsed) {
-    const right = `得点: ${parsed.score}　手数: ${parsed.moves}`;
+    const right = `${tr('scoreLabel')}: ${parsed.score}　${tr('movesLabel')}: ${parsed.moves}`;
     setStatus(parsed.room, right);
     void translateOut(parsed.room).then((ja) => setStatus(ja, right));
   } else {
@@ -292,7 +299,7 @@ async function translateOut(body: string): Promise<string> {
   try {
     return await exitTr.translate(body);
   } catch (err) {
-    print('system', `翻訳エラー: ${String(err)} — 原文を表示します`);
+    print('system', tr('translateError', { err: String(err) }));
     return body;
   }
 }
@@ -423,17 +430,17 @@ function showMenuChoices(spec: MenuSpec, body: string, labeled: MenuChoice[]): v
   // ENTER 終了形式のみ汎用ボタンを足す (文字式の endKey は選択肢として既に表示済み)
   if (spec.enterEnds) {
     const b = document.createElement('button');
-    b.textContent = '会話を終える';
+    b.textContent = tr('endConversation');
     b.addEventListener('click', () => void submitMenuSelection(''));
     choices.appendChild(b);
   }
   choices.hidden = false;
-  input.placeholder = '番号/文字で選択、または日本語で指示';
+  input.placeholder = tr('inputPlaceholderMenu');
 }
 
 function showQuestionChoices(): void {
   choices.innerHTML = '';
-  for (const [label, value] of [['はい', 'yes'], ['いいえ', 'no']] as const) {
+  for (const [label, value] of [[tr('yes'), 'yes'], [tr('no'), 'no']] as const) {
     const b = document.createElement('button');
     b.textContent = label;
     b.addEventListener('click', () => void submitDirect(value));
@@ -479,7 +486,7 @@ async function presentMenu(
     ...(narrative !== '' ? [''] : []), // セリフとメニューの間に空き 1 行
     ...(headerJa !== '' ? [headerJa] : []),
     ...labeled.map((c) => `  ${c.key}: ${c.label}`),
-    ...(spec.enterEnds ? ['  (空 Enter: 会話を終える)'] : []),
+    ...(spec.enterEnds ? [tr('enterEndsConversation')] : []),
   ];
   const menuText = menuLines.join('\n');
   await pageGate(menuText);
@@ -511,8 +518,8 @@ async function presentOutput(out: {
   }
   if (out.kind === 'gameover') {
     gameOver = true;
-    print('system', '―― ゲーム終了 ――');
-    input.placeholder = '設定から新しいゲームを読み込めます';
+    print('system', tr('gameOverBanner'));
+    input.placeholder = tr('loadNewGameHint');
   }
 }
 
@@ -522,12 +529,12 @@ async function submitMenuSelection(key: string): Promise<void> {
   pager.reset();
   clearChoices();
   try {
-    print('cmd', `> ${key === '' ? '(会話を終える)' : key}`);
+    print('cmd', `> ${key === '' ? tr('conversationEnded') : key}`);
     const out = await sendResolvingPauses(engine, key);
     session.pushGameOutput(out.body);
     await presentOutput(out);
   } catch (err) {
-    print('system', `エラー: ${String(err)}`);
+    print('system', tr('error', { err: String(err) }));
   } finally {
     setBusy(false);
   }
@@ -544,7 +551,7 @@ async function submitDirect(command: string): Promise<void> {
     session.pushGameOutput(out.body);
     await presentOutput(out);
   } catch (err) {
-    print('system', `エラー: ${String(err)}`);
+    print('system', tr('error', { err: String(err) }));
   } finally {
     setBusy(false);
   }
@@ -552,17 +559,17 @@ async function submitDirect(command: string): Promise<void> {
 
 async function handleUserInput(ja: string): Promise<void> {
   if (engine === undefined || session === undefined || entry === undefined) {
-    print('system', '先に設定からゲームを読み込んでください');
+    print('system', tr('loadGameFirst'));
     return;
   }
   if (gameOver) {
-    print('system', 'ゲームは終了しています。設定から新しいゲームを読み込んでください');
+    print('system', tr('gameEnded'));
     return;
   }
   setBusy(true);
   pager.reset();
   print('user', ja);
-  const thinking = print('thinking', '考え中…');
+  const thinking = print('thinking', tr('thinking'));
   try {
     // メニュー表示中は選択として解釈
     if (activeMenu !== undefined) {
@@ -580,7 +587,7 @@ async function handleUserInput(ja: string): Promise<void> {
       }
       thinking.remove();
       if (selection === undefined) {
-        print('system', `その選択肢はありません (${spec.choices.map((c) => c.key).join('/')})`);
+        print('system', tr('noSuchChoice', { keys: spec.choices.map((c) => c.key).join('/') }));
         showMenuChoices(spec, lastMenuBody, lastMenuLabeled);
         return;
       }
@@ -592,19 +599,21 @@ async function handleUserInput(ja: string): Promise<void> {
     thinking.remove();
     const lastResult = turn.results[turn.results.length - 1];
     for (const r of turn.results) {
-      print('cmd', `> ${r.command}${r.corrected ? ' (自己修正)' : ''}`);
+      print('cmd', `> ${r.command}${r.corrected ? ' ' + tr('corrected') : ''}`);
       if (r === lastResult) await presentOutput(r.output);
       else await renderRichOutput(r.output);
     }
     if (turn.error !== undefined) {
-      const isJa = /[^\x00-\x7f]/.test(turn.error);
-      print('system', isJa ? turn.error : await translateOut(turn.error));
+      // game 由来 (ゲーム英語) は出口翻訳に回す。app 由来は既にプレイヤー向け文言
+      const msg =
+        turn.error.source === 'game' ? await translateOut(turn.error.message) : turn.error.message;
+      print('system', msg);
     }
-    if (turn.aborted) print('cmd', '(途中で失敗したため残りの動作は中止しました)');
+    if (turn.aborted) print('cmd', tr('abortedRest'));
     if (turn.gameOver) gameOver = true; // 表示は presentOutput 側
   } catch (err) {
     thinking.remove();
-    print('system', `エラー: ${String(err)}`);
+    print('system', tr('error', { err: String(err) }));
   } finally {
     setBusy(false);
   }
@@ -612,6 +621,9 @@ async function handleUserInput(ja: string): Promise<void> {
 
 async function startGame(data: Uint8Array, filename: string): Promise<void> {
   setBusy(true);
+  // 設定で選んだ言語を「次に開くゲーム」= ここで UI・本文ともに反映する
+  // (ゲーム中の言語変更は commit では UI に即時反映していない。ここで揃う)
+  applyUiLanguage();
   terminal.innerHTML = '';
   terminal.classList.remove('welcoming');
   clearChoices();
@@ -624,11 +636,11 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
   try {
     const info = analyzeStory(data, filename);
     if (info.format === 'glulx') {
-      print('system', 'Glulx 対応は準備中です (フェーズ2b)。Z-code (.z3/.z5/.z8/.zblorb) をご利用ください');
+      print('system', tr('glulxNotReady'));
       return;
     }
     if (info.vocabError !== undefined) {
-      print('system', `辞書抽出に失敗しました (辞書なしで続行): ${info.vocabError}`);
+      print('system', tr('dictExtractFail', { err: String(info.vocabError) }));
     }
     const id = await storyId(info);
 
@@ -637,16 +649,23 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
     entry = new EntryTranslator(llm, prompts, {
       contextTurns: settings.contextTurns,
       logger,
+      language: settings.language,
     });
     await entry.init(info.vocab);
-    exitTr = new ExitTranslator(llm, prompts, new IdbCacheStore(`exit:${id}`), logger);
-    const glossaryNote = print('thinking', '固有名詞の用語集を準備中…');
+    exitTr = new ExitTranslator(
+      llm,
+      prompts,
+      new IdbCacheStore(`exit:${id}`),
+      logger,
+      settings.language,
+    );
+    const glossaryNote = print('thinking', tr('glossaryPreparing'));
     try {
       await exitTr.init(usefulObjectNames(info.vocab.objectNames));
     } catch (err) {
       // LLM 不通でもゲーム自体は起動する (翻訳は原文フォールバック)
-      print('system', `LLM に接続できません (原文表示で続行): ${String(err).slice(0, 160)}`);
-      print('system', '右上の「設定」→ 接続テストで接続を確認できます');
+      print('system', tr('llmConnectFail', { err: String(err).slice(0, 160) }));
+      print('system', tr('settingsHint'));
       await exitTr.init([]);
     } finally {
       glossaryNote.remove();
@@ -656,7 +675,7 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       vm: 'bocfel',
       storyName: filename,
       storyData: data,
-      dialogPort: new ModalDialogPort(),
+      dialogPort: new ModalDialogPort(() => settings.language),
       saveStore: new IdbSaveStore(id),
       loadWasmBinary: wasmLoader('bocfel'),
     });
@@ -666,7 +685,7 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       contextTurns: settings.contextTurns,
     }, logger);
 
-    const loading = print('system', `${filename} を起動中…`);
+    const loading = print('system', tr('startingGame', { filename }));
     pager.reset();
     let out = await engine.start();
     loading.remove(); // 起動完了 → ローディング表示を消す
@@ -679,20 +698,36 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       !REAL_QUESTION_RE.test(out.body.trimEnd())
     ) {
       await renderRichOutput(out);
-      await waitForContinue('—— キーを押して続行 ——');
+      await waitForContinue(tr('keyWaitBar'));
       out = await engine.send('');
     }
     session.pushGameOutput(out.body);
     await presentOutput(out);
-    print('system', '日本語で指示してください (例: 周りを見る)');
+    print('system', tr('inputPlaceholderExample'));
   } catch (err) {
-    print('system', `起動エラー: ${String(err)}`);
+    print('system', tr('startError', { err: String(err) }));
   } finally {
     setBusy(false);
   }
 }
 
 // ---- 設定ダイアログ ----
+
+/**
+ * <html lang> をプレイ言語に合わせる。ただし UI 文言は当面日本語のままなので
+ * (フェーズC で i18n)、ゲーム本文領域 (#terminal) の lang だけ切り替え、
+ * document 全体は ja のままにして UI=ja / 本文=選択言語 の混在を厳密にする。
+ */
+function applyUiLanguage(): void {
+  // UI 文言も翻訳済みなので document 全体の lang を選択言語にする
+  document.documentElement.lang = settings.language;
+  terminal.setAttribute('lang', settings.language);
+  applyDomI18n(settings.language); // index.html の data-i18n を選択言語へ
+}
+/** UI 文言を引く近道 (現在の設定言語) */
+function tr(key: Parameters<typeof t>[1], params?: Parameters<typeof t>[2]): string {
+  return t(settings.language, key, params);
+}
 
 function wireSettings(): void {
   const dialog = $<HTMLDialogElement>('settings-dialog');
@@ -702,6 +737,26 @@ function wireSettings(): void {
   const model = $<HTMLInputElement>('set-model');
   const modelList = $<HTMLDataListElement>('model-list');
   const testResult = $('test-result');
+  const langSelect = $<HTMLSelectElement>('set-language');
+  // 言語セレクタを LANGUAGE_PROFILES から生成 (既定 ja)
+  for (const code of SUPPORTED_LANGUAGES) {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = LANGUAGE_PROFILES[code].label;
+    langSelect.appendChild(opt);
+  }
+
+  // フォームの各入力を現在の settings から hydrate する。option 生成直後・設定を
+  // 開く前・auto-open 前に必ず呼ぶ (これを怠ると select が先頭 ja のまま残り、
+  // 「UI=fr なのにセレクタ表示が日本語」になる — Codex 高指摘の根本原因)
+  const syncSettingsForm = () => {
+    baseUrl.value = settings.baseUrl;
+    apiKey.value = settings.apiKey;
+    persist.checked = settings.persistKey;
+    model.value = settings.model;
+    langSelect.value = settings.language;
+  };
+  syncSettingsForm(); // 起動時の初期同期 (auto-open もこの値を表示する)
 
   const commit = () => {
     settings = {
@@ -710,27 +765,29 @@ function wireSettings(): void {
       apiKey: apiKey.value.trim(),
       persistKey: persist.checked,
       model: model.value.trim(),
+      language: isLanguageCode(langSelect.value) ? langSelect.value : DEFAULT_SETTINGS.language,
     };
     saveSettings(settings);
+    // 言語変更の UI 反映はゲーム未開始時のみ即時。ゲーム中は entry/exit/session/
+    // キャッシュが開始時の言語を保持しているため、UI も「次に開くゲームから」に
+    // 揃える (注意書きと実装の整合。startGame で applyUiLanguage を呼ぶ)
+    if (engine === undefined) applyUiLanguage();
   };
 
   $('btn-settings').addEventListener('click', () => {
-    baseUrl.value = settings.baseUrl;
-    apiKey.value = settings.apiKey;
-    persist.checked = settings.persistKey;
-    model.value = settings.model;
+    syncSettingsForm();
     testResult.textContent = '';
     dialog.showModal();
   });
   // close イベントだけに依存せず、変更の都度コミットする (取りこぼし防止)
-  for (const el of [baseUrl, apiKey, model]) el.addEventListener('change', commit);
+  for (const el of [baseUrl, apiKey, model, langSelect]) el.addEventListener('change', commit);
   persist.addEventListener('change', commit);
   dialog.addEventListener('close', commit);
 
   $('btn-test').addEventListener('click', () => {
     void (async () => {
       testResult.className = '';
-      testResult.textContent = '確認中…';
+      testResult.textContent = tr('checking');
       const probe = new LLMClient(
         new FetchTransport(baseUrl.value.trim().replace(/\/$/, ''), apiKey.value.trim(), nativeFetch),
         { model: model.value.trim() || 'test', temperature: 0, maxTokens: 8, timeoutMs: 20000 },
@@ -744,13 +801,13 @@ function wireSettings(): void {
           modelList.appendChild(opt);
         }
         testResult.className = 'ok';
-        testResult.textContent = `接続 OK (モデル ${models.length} 件)`;
+        testResult.textContent = tr('connectOk', { n: models.length });
       } catch {
         // /models 非対応サーバ → chat 疎通にフォールバック (plan: 2 段接続テスト)
         try {
           await probe.chat([{ role: 'user', content: 'ping' }]);
           testResult.className = 'ok';
-          testResult.textContent = '接続 OK (chat 疎通)';
+          testResult.textContent = tr('connectOkChat');
         } catch (err) {
           testResult.className = 'ng';
           testResult.textContent = String(err).slice(0, 200);
@@ -773,7 +830,7 @@ function wireSettings(): void {
 
   $('btn-open-url').addEventListener('click', () => {
     void (async () => {
-      const url = window.prompt('ストーリーファイルの URL (.z3/.z5/.z8 等):');
+      const url = window.prompt(tr('urlPrompt'));
       if (!url) return;
       dialog.close();
       try {
@@ -782,7 +839,7 @@ function wireSettings(): void {
         const name = new URL(url, location.href).pathname.split('/').pop() || 'story.z5';
         await startGame(new Uint8Array(await res.arrayBuffer()), name);
       } catch (err) {
-        print('system', `URL からの読み込みに失敗: ${String(err)} (配信元が CORS を許可している必要があります)`);
+        print('system', tr('urlLoadFail', { err: String(err) }));
       }
     })();
   });
@@ -865,16 +922,17 @@ function showWelcome(): void {
   logo.textContent = 'yominterp';
   const subtitle = document.createElement('p');
   subtitle.className = 'subtitle';
-  subtitle.textContent = '英語のインタラクティブフィクションを日本語で遊ぶ';
+  subtitle.textContent = tr('welcomeSubtitle');
   const hint = document.createElement('p');
   hint.className = 'hint';
-  hint.textContent = '右上の ☰ メニュー →「開く」でゲームを読み込み、「設定」で LLM 接続先を指定してください';
+  hint.textContent = tr('welcomeHint');
   wrap.append(logo, subtitle, hint);
   terminal.appendChild(wrap);
 }
 
 wireSettings();
 wireTopbar();
+applyUiLanguage();
 showWelcome();
 
 /**
