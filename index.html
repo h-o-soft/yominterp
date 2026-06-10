@@ -48,12 +48,12 @@
         <h2 data-i18n="settingsTitle">設定</h2>
         <fieldset>
           <legend data-i18n="llmConnection">LLM 接続 (OpenAI 互換)</legend>
-          <label>Base URL <input id="set-baseurl" placeholder="http://127.0.0.1:1234/v1" /></label>
+          <label><span data-i18n="baseUrlLabel">Base URL</span> <input id="set-baseurl" placeholder="http://127.0.0.1:1234/v1" /></label>
           <label
-            >API Key <input id="set-apikey" type="password" autocomplete="off" />
+            ><span data-i18n="apiKeyLabel">API Key</span> <input id="set-apikey" type="password" autocomplete="off" />
             <small><label><input type="checkbox" id="set-persistkey" /><span data-i18n="apiKeyPersist">このブラウザに保存する (既定はメモリのみ。共有PCでは保存しないでください)</span></label></small>
           </label>
-          <label>モデル <input id="set-model" list="model-list" /><datalist id="model-list"></datalist></label>
+          <label><span data-i18n="modelLabel">モデル</span> <input id="set-model" list="model-list" /><datalist id="model-list"></datalist></label>
           <button type="button" id="btn-test" data-i18n="connectionTest">接続テスト</button>
           <span id="test-result"></span>
         </fieldset>
@@ -68,7 +68,7 @@
         </fieldset>
         <fieldset>
           <legend data-i18n="playLanguage">プレイ言語</legend>
-          <label>言語 <select id="set-language"></select></label>
+          <label><span data-i18n="languageLabel">言語</span> <select id="set-language"></select></label>
           <small id="lang-note" data-i18n="betaNotice">
             ⚠ 多言語は<strong>実験的機能</strong>です。翻訳の品質は使う LLM のモデルに大きく依存します。
             既定は日本語。日本語以外を選ぶと入力・ゲーム表示がその言語になります (メニュー等の UI 文言は当面日本語のまま)。
