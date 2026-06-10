@@ -364,7 +364,16 @@ async function renderRichOutput(
   paged = true,
 ): Promise<string> {
   // ゲームの画面クリア要求を honor (クラシック=実クリア / モダン=区切り線)
-  if (out.cleared === true) honorClear();
+  if (out.cleared === true) {
+    honorClear();
+  } else {
+    // upper window (grid box) は「現在の画面状態」を表す窓。本文に焼き付けず、
+    // 前ターンに描画した grid box は消してから今回の grid を出す。これで grid が
+    // 縮小/消滅 (メニュー終了・別の場所へ) したら過去のメニュー/カットシーンが
+    // 画面に残らない (ninetenths の黄色メニュー残留の根治)。本文 buffer 段落は
+    // スクロール履歴として残す。原文ビューの gridbox (.raw) は対象外。
+    for (const el of terminal.querySelectorAll('.gridbox:not(.raw)')) el.remove();
+  }
   applyBackgroundFrom(out); // ゲーム背景色を端末全体に統一
   showStatus(out.statusLine, out.statusStyle);
   if (out.rich === undefined) {
