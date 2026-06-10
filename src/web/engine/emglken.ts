@@ -79,7 +79,10 @@ export function settledToOutput(settled: SettledUpdate, sentCommand: string | un
   let richGridBlock: StyledBlock | undefined;
   const styleOfStatusRow = (row: StyledLine | undefined): SpanStyle | undefined =>
     row?.spans.find((sp) => sp.text.trim() !== '' && sp.style !== undefined)?.style;
-  if (settled.gridHeight > 3 && settled.gridLines.length > 0) {
+  // 拡大 grid を本文に連結するのは「このターンに中身が更新された」場合のみ。
+  // 高さだけ残って中身が古いままのメニュー (set_arrangement で縮小せず clear も
+  // 来ないゲーム) を毎ターン連結すると、画面上部に残留して本文に重なる。
+  if (settled.gridHeight > 3 && settled.gridLines.length > 0 && settled.gridFreshContent) {
     const contentLines: string[] = [];
     for (const line of settled.gridLines) {
       if (statusLine === undefined && parseStatusLine(line) !== undefined) {

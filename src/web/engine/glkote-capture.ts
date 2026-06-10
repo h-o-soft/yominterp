@@ -47,6 +47,13 @@ export interface SettledUpdate {
   richGrid: StyledLine[];
   /** 最も背の高い grid の高さ (quote 画面判定用) */
   gridHeight: number;
+  /**
+   * この settle 中に grid window の **ステータス行以外 (line>0)** が更新されたか。
+   * 拡大 grid (メニュー/カットシーン) を本文に連結してよいのは「このターンに
+   * 中身が更新された」場合だけ。更新が無いのに高さだけ残った古いメニューを
+   * 連結し続けると、画面上部に残留して本文に重なる (ninetenths)。
+   */
+  gridFreshContent: boolean;
   input?: GlkInputRequest;
   special?: GlkSpecialInput;
   /** disable=true かつ入力要求なし (VM 終了) */
@@ -120,6 +127,8 @@ export class GlkOteCapture {
   private pendingBuffer: StyledLine[] = [];
   private lastInput: GlkInputRequest | undefined;
   private lastSpecial: GlkSpecialInput | undefined;
+  /** この settle 中に grid の line>0 (ステータス行以外) が更新されたか */
+  private gridFreshContent = false;
   private pendingCleared = false;
   private ended = false;
   private gen = 0;
@@ -173,6 +182,23 @@ export class GlkOteCapture {
     if (data.type !== 'update') return; // pass/retry は無視
     this.gen = data.gen ?? this.gen;
 
+    // ---- DEBUG: GlkOte の window/content 生データを採取 (調査用・後で除去) ----
+    {
+      const g = globalThis as { __GLKLOG?: unknown[] };
+      if (g.__GLKLOG === undefined) g.__GLKLOG = [];
+      if (g.__GLKLOG.length > 300) g.__GLKLOG.shift();
+      g.__GLKLOG.push({
+        gen: data.gen,
+        windows: (data.windows ?? []).map((w) => ({ id: w.id, type: w.type, gridheight: w.gridheight, height: w.height })),
+        content: (data.content ?? []).map((c) => ({
+          id: c.id,
+          clear: c.clear,
+          lines: c.lines?.map((l) => ({ line: l.line, text: (l.content ?? []).map((s) => (typeof s === 'string' ? s : s.text)).join('') })),
+          textParas: c.text?.length,
+        })),
+      });
+    }
+
     for (const w of data.windows ?? []) {
       const existing = this.windows.get(w.id);
       this.windows.set(w.id, {
@@ -190,7 +216,11 @@ export class GlkOteCapture {
         const lines = c.clear ? [] : (this.gridContent.get(c.id) ?? []);
         for (const l of c.lines) {
           lines[l.line] = { spans: (l.content ?? []).map((s) => resolveSpan(s, info?.styleMap)) };
+          // ステータス行 (line 0) 以外の更新 = 拡大 grid (メニュー等) の中身が
+          // このターンに描き換わった。clear も「中身が変わった」とみなす。
+          if (l.line > 0) this.gridFreshContent = true;
         }
+        if (c.clear === true) this.gridFreshContent = true;
         this.gridContent.set(c.id, lines);
       }
       if (c.text !== undefined) {
@@ -316,11 +346,13 @@ export class GlkOteCapture {
       gridLines,
       richGrid,
       gridHeight,
+      gridFreshContent: this.gridFreshContent,
       ended: this.ended,
       cleared: this.pendingCleared,
       gen: this.gen,
     };
     this.pendingCleared = false;
+    this.gridFreshContent = false;
     if (input !== undefined) settled.input = input;
     if (special !== undefined) settled.special = special;
     return settled;

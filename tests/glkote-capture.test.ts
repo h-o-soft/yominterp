@@ -111,6 +111,43 @@ describe('GlkOteCapture (状態機械)', () => {
     expect(s2.gridHeight).toBe(1);
   });
 
+  it('拡大 grid の中身が更新されないターンは gridFreshContent=false (残留連結を防ぐ)', async () => {
+    // メニュー (line>0) を表示したターンは fresh=true、次に高さだけ残って中身が
+    // 更新されない (ステータス line 0 のみ or 更新なし) ターンは fresh=false。
+    const { cap } = makeCapture();
+    const p1 = cap.waitSettle();
+    cap.update({
+      type: 'update',
+      gen: 1,
+      windows: [{ id: 3, type: 'grid', gridheight: 12 }],
+      content: [
+        {
+          id: 3,
+          lines: [
+            { line: 0, content: [{ text: ' Stone corridor' }] },
+            { line: 2, content: [{ text: 'What do you do?' }] },
+            { line: 3, content: [{ text: '1: approach the door' }] },
+          ],
+        },
+      ],
+      input: [{ id: 2, gen: 1, type: 'char' }],
+    });
+    const s1 = await p1;
+    expect(s1.gridFreshContent).toBe(true); // メニュー描画ターン
+
+    // 次ターン: 高さは 12 のまま、ステータス行 (line 0) だけ更新 → 中身は古いまま
+    const p2 = cap.waitSettle();
+    cap.update({
+      type: 'update',
+      gen: 2,
+      windows: [{ id: 3, type: 'grid', gridheight: 12 }],
+      content: [{ id: 3, lines: [{ line: 0, content: [{ text: ' The Hilltop' }] }] }],
+      input: [{ id: 2, gen: 2, type: 'line' }],
+    });
+    const s2 = await p2;
+    expect(s2.gridFreshContent).toBe(false); // 古いメニューを連結しないための信号
+  });
+
   it('specialinput で settle し、disable+入力なしで ended になる', async () => {
     const { cap } = makeCapture();
     const p = cap.waitSettle();
@@ -144,6 +181,7 @@ describe('settledToOutput (EngineOutput 構築)', () => {
     gridLines: [] as string[],
     richGrid: richOf([]),
     gridHeight: 0,
+    gridFreshContent: false,
     ended: false,
     cleared: false,
     gen: 1,
@@ -183,6 +221,7 @@ describe('settledToOutput (EngineOutput 構築)', () => {
         gridLines: ['  How you have fallen', '  -- Isaiah 14:12'],
         richGrid: richGridOf(['  How you have fallen', '  -- Isaiah 14:12']),
         gridHeight: 12,
+        gridFreshContent: true,
         input: { id: 2, gen: 1, type: 'char' },
       },
       undefined,
@@ -200,6 +239,7 @@ describe('settledToOutput (EngineOutput 構築)', () => {
         gridLines: ['Talk to Rosie about:', '1: Cora', '[ENTER] End conversation'],
         richGrid: richGridOf(['Talk to Rosie about:', '1: Cora', '[ENTER] End conversation']),
         gridHeight: 8,
+        gridFreshContent: true,
         input: { id: 2, gen: 3, type: 'char' },
       },
       undefined,
@@ -229,6 +269,7 @@ describe('settledToOutput (EngineOutput 構築)', () => {
           '[ENTER] End conversation',
         ]),
         gridHeight: 8,
+        gridFreshContent: true,
         input: { id: 2, gen: 3, type: 'char' },
       },
       undefined,
@@ -248,6 +289,7 @@ describe('settledToOutput (EngineOutput 構築)', () => {
         gridLines: [' Great Hall      Score: 0     Moves: 1'],
         richGrid: richGridOf([' Great Hall      Score: 0     Moves: 1']),
         gridHeight: 1,
+        gridFreshContent: false,
         input: { id: 2, gen: 1, type: 'line' },
       },
       'look',
@@ -343,6 +385,7 @@ describe('装飾の保持 (Lv1/Lv2)', () => {
         gridLines: [' Hall    Score: 0     Moves: 1', '    quote line    ', '     -- Author    '],
         richGrid,
         gridHeight: 8,
+        gridFreshContent: true,
         ended: false,
         cleared: false,
         gen: 1,
@@ -370,6 +413,7 @@ describe('装飾の保持 (Lv1/Lv2)', () => {
         gridLines: [],
         richGrid: [],
         gridHeight: 0,
+        gridFreshContent: false,
         ended: false,
         cleared: false,
         gen: 1,
