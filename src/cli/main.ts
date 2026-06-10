@@ -73,11 +73,16 @@ async function main(): Promise<void> {
 
   const prompts = new FilePromptProvider(['prompts', 'fixtures']);
   const language = cfg.language ?? DEFAULT_LANGUAGE;
-  const entry = new EntryTranslator(llm, prompts, {
-    contextTurns: cfg.context.turns,
-    logger,
-    language,
-  });
+  const entry = new EntryTranslator(
+    llm,
+    prompts,
+    {
+      contextTurns: cfg.context.turns,
+      logger,
+      language,
+    },
+    new FileCacheStore(`${cfg.cacheDir}/entry-commands.json`),
+  );
   await entry.init(vocab);
   const exit = new ExitTranslator(
     llm,

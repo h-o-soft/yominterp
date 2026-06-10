@@ -756,11 +756,16 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
 
     llm = makeLLM();
     const prompts = new BundledPromptProvider();
-    entry = new EntryTranslator(llm, prompts, {
-      contextTurns: settings.contextTurns,
-      logger,
-      language: settings.language,
-    });
+    entry = new EntryTranslator(
+      llm,
+      prompts,
+      {
+        contextTurns: settings.contextTurns,
+        logger,
+        language: settings.language,
+      },
+      new IdbCacheStore(`entry:${id}`),
+    );
     await entry.init(info.vocab);
     exitTr = new ExitTranslator(
       llm,
