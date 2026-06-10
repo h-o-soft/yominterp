@@ -102,8 +102,9 @@ export class ExitTranslator {
 
   private async buildGlossary(candidates: string[]): Promise<void> {
     const sorted = [...new Set(candidates)].sort();
-    // 言語別 glossary が混ざらないよう language をキーに含める (model は既存どおり)
-    const cacheKey = `exit-glossary:${this.language}:${fnv1a(sorted.join('|') + '@' + this.exitModelId())}`;
+    // language + glossary 構築プロンプト版数 + model をキーに含める
+    // (glossary プロンプト改訂時に古い用語集を再利用しないように)
+    const cacheKey = `exit-glossary:${this.language}:${fnv1a(GLOSSARY_SYSTEM)}:${fnv1a(sorted.join('|') + '@' + this.exitModelId())}`;
     let listing = await this.cache?.get(cacheKey);
     if (listing === undefined) {
       const messages: ChatMessage[] = [

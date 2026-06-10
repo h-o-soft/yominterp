@@ -587,7 +587,7 @@ async function handleUserInput(ja: string): Promise<void> {
       }
       thinking.remove();
       if (selection === undefined) {
-        print('system', `その選択肢はありません (${spec.choices.map((c) => c.key).join('/')})`);
+        print('system', tr('noSuchChoice', { keys: spec.choices.map((c) => c.key).join('/') }));
         showMenuChoices(spec, lastMenuBody, lastMenuLabeled);
         return;
       }
@@ -621,6 +621,9 @@ async function handleUserInput(ja: string): Promise<void> {
 
 async function startGame(data: Uint8Array, filename: string): Promise<void> {
   setBusy(true);
+  // 設定で選んだ言語を「次に開くゲーム」= ここで UI・本文ともに反映する
+  // (ゲーム中の言語変更は commit では UI に即時反映していない。ここで揃う)
+  applyUiLanguage();
   terminal.innerHTML = '';
   terminal.classList.remove('welcoming');
   clearChoices();
@@ -716,6 +719,8 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
  * document 全体は ja のままにして UI=ja / 本文=選択言語 の混在を厳密にする。
  */
 function applyUiLanguage(): void {
+  // UI 文言も翻訳済みなので document 全体の lang を選択言語にする
+  document.documentElement.lang = settings.language;
   terminal.setAttribute('lang', settings.language);
   applyDomI18n(settings.language); // index.html の data-i18n を選択言語へ
 }
@@ -741,6 +746,18 @@ function wireSettings(): void {
     langSelect.appendChild(opt);
   }
 
+  // フォームの各入力を現在の settings から hydrate する。option 生成直後・設定を
+  // 開く前・auto-open 前に必ず呼ぶ (これを怠ると select が先頭 ja のまま残り、
+  // 「UI=fr なのにセレクタ表示が日本語」になる — Codex 高指摘の根本原因)
+  const syncSettingsForm = () => {
+    baseUrl.value = settings.baseUrl;
+    apiKey.value = settings.apiKey;
+    persist.checked = settings.persistKey;
+    model.value = settings.model;
+    langSelect.value = settings.language;
+  };
+  syncSettingsForm(); // 起動時の初期同期 (auto-open もこの値を表示する)
+
   const commit = () => {
     settings = {
       ...settings,
@@ -751,15 +768,14 @@ function wireSettings(): void {
       language: isLanguageCode(langSelect.value) ? langSelect.value : DEFAULT_SETTINGS.language,
     };
     saveSettings(settings);
-    applyUiLanguage();
+    // 言語変更の UI 反映はゲーム未開始時のみ即時。ゲーム中は entry/exit/session/
+    // キャッシュが開始時の言語を保持しているため、UI も「次に開くゲームから」に
+    // 揃える (注意書きと実装の整合。startGame で applyUiLanguage を呼ぶ)
+    if (engine === undefined) applyUiLanguage();
   };
 
   $('btn-settings').addEventListener('click', () => {
-    baseUrl.value = settings.baseUrl;
-    apiKey.value = settings.apiKey;
-    persist.checked = settings.persistKey;
-    model.value = settings.model;
-    langSelect.value = settings.language;
+    syncSettingsForm();
     testResult.textContent = '';
     dialog.showModal();
   });
