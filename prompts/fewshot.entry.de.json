@@ -1,0 +1,27 @@
+[
+  {
+    "commands": [
+      "look"
+    ],
+    "input": "umschauen"
+  },
+  {
+    "commands": [
+      "examine lamp"
+    ],
+    "input": "die Lampe untersuchen"
+  },
+  {
+    "commands": [
+      "take lamp",
+      "north"
+    ],
+    "input": "nimm die Lampe und geh nach Norden"
+  },
+  {
+    "commands": [
+      "talk to old man"
+    ],
+    "input": "mit dem alten Mann sprechen"
+  }
+]

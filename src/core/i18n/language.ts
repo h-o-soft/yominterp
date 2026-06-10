@@ -90,10 +90,34 @@ const FR_META_INTENT: [RegExp, RegExp][] = [
   [/^undo$/, /annuler|défaire|revenir en arrière/i],
 ];
 
+const ES_META_INTENT: [RegExp, RegExp][] = [
+  [/^(quit|q)$/, /salir|terminar el juego|abandonar/i],
+  [/^restart$/, /reiniciar|empezar de nuevo|desde el principio/i],
+  [/^restore$/, /cargar|restaurar|continuar|partida guardada/i],
+  [/^save$/, /guardar|salvar/i],
+  [/^undo$/, /deshacer|anular|volver atrás/i],
+];
+
+const DE_META_INTENT: [RegExp, RegExp][] = [
+  [/^(quit|q)$/, /beenden|aufhören|spiel beenden/i],
+  [/^restart$/, /neu ?starten|von vorne|neustart/i],
+  [/^restore$/, /laden|wiederherstellen|fortsetzen|spielstand/i],
+  [/^save$/, /speichern|sichern/i],
+  [/^undo$/, /rückgängig|zurücknehmen|zurück/i],
+];
+
+const PT_META_INTENT: [RegExp, RegExp][] = [
+  [/^(quit|q)$/, /sair|encerrar o jogo|abandonar/i],
+  [/^restart$/, /reiniciar|recomeçar|do início/i],
+  [/^restore$/, /carregar|restaurar|continuar|jogo salvo/i],
+  [/^save$/, /salvar|guardar/i],
+  [/^undo$/, /desfazer|anular|voltar atrás/i],
+];
+
 export const LANGUAGE_PROFILES: Record<LanguageCode, LanguageProfile> = {
   ja: { code: 'ja', label: '日本語', glossary: 'katakana', metaIntent: JA_META_INTENT },
-  es: { code: 'es', label: 'Español', glossary: 'none', metaIntent: [] },
+  es: { code: 'es', label: 'Español', glossary: 'none', metaIntent: ES_META_INTENT },
   fr: { code: 'fr', label: 'Français', glossary: 'none', metaIntent: FR_META_INTENT },
-  de: { code: 'de', label: 'Deutsch', glossary: 'none', metaIntent: [] },
-  'pt-BR': { code: 'pt-BR', label: 'Português (Brasil)', glossary: 'none', metaIntent: [] },
+  de: { code: 'de', label: 'Deutsch', glossary: 'none', metaIntent: DE_META_INTENT },
+  'pt-BR': { code: 'pt-BR', label: 'Português (Brasil)', glossary: 'none', metaIntent: PT_META_INTENT },
 };

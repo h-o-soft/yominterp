@@ -34,8 +34,16 @@ export interface TurnContext {
 
 export interface FewShotExample {
   context?: string;
-  ja: string;
+  /** プレイヤー言語の入力例。`ja` は後方互換 (旧 fewshot.entry.json) */
+  input?: string;
+  /** @deprecated `input` を使う。旧 ja 専用 few-shot との後方互換のため残す */
+  ja?: string;
   commands: string[];
+}
+
+/** few-shot 例のプレイヤー入力文 (input 優先・ja 後方互換) */
+function exampleInput(ex: FewShotExample): string {
+  return ex.input ?? ex.ja ?? '';
 }
 
 export interface RetranslateRequest {
@@ -321,7 +329,7 @@ export class EntryTranslator {
   buildMessages(jaInput: string, recent: TurnContext[]): ChatMessage[] {
     const messages: ChatMessage[] = [{ role: 'system', content: this.systemPrompt }];
     for (const ex of this.fewshot) {
-      messages.push({ role: 'user', content: this.formatUser(ex.context ?? '', ex.ja) });
+      messages.push({ role: 'user', content: this.formatUser(ex.context ?? '', exampleInput(ex)) });
       messages.push({ role: 'assistant', content: ex.commands.join('\n') });
     }
     messages.push({ role: 'user', content: this.formatUser(this.recentText(recent), jaInput) });

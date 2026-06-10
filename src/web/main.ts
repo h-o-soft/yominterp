@@ -597,8 +597,10 @@ async function handleUserInput(ja: string): Promise<void> {
       else await renderRichOutput(r.output);
     }
     if (turn.error !== undefined) {
-      const isJa = /[^\x00-\x7f]/.test(turn.error);
-      print('system', isJa ? turn.error : await translateOut(turn.error));
+      // game 由来 (ゲーム英語) は出口翻訳に回す。app 由来は既にプレイヤー向け文言
+      const msg =
+        turn.error.source === 'game' ? await translateOut(turn.error.message) : turn.error.message;
+      print('system', msg);
     }
     if (turn.aborted) print('cmd', '(途中で失敗したため残りの動作は中止しました)');
     if (turn.gameOver) gameOver = true; // 表示は presentOutput 側
