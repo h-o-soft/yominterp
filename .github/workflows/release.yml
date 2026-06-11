@@ -4,7 +4,8 @@
 # tauri-action が OS 別にビルドし、GitHub Release (draft) にバイナリを添付する。
 # draft のままなら外部には公開されない — publish は最終確認後に手動で行う。
 #   - macOS: .dmg / .app (Apple Silicon のみ。Intel mac は OS サポート終了が近く対象外)
-#     **Developer ID 署名 + notarization 済み** (Secrets 設定時。空なら未署名ビルド)
+#     **Developer ID 署名 + notarization 必須** (Secrets 欠落時はジョブを fail fast —
+#     未署名の mac バイナリを黙ってリリースしない)
 #   - Windows: .msi / setup.exe (NSIS) — 未署名 (証明書未保有)。SmartScreen の
 #     回避手順は releaseBody と README に記載
 #   - Linux(任意): .AppImage / .deb — 配布する場合は matrix のコメントを外す
@@ -78,21 +79,49 @@ jobs:
       - name: Install npm deps
         run: npm ci
 
+      # mac の配布物は「署名・公証済み」を保証する (Release ノート/README で断定して
+      # いるため)。Secrets が欠けたまま黙って未署名でリリースが作られる事故を防ぐ —
+      # 欠けている Secret の「名前だけ」を出して fail fast する (値はログに出さない)
+      - name: Require signing secrets (macOS)
+        if: contains(matrix.platform, 'macos')
+        shell: bash
+        env:
+          HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+          HAS_CERT_PW: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+          HAS_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
+          HAS_ID: ${{ secrets.APPLE_ID != '' }}
+          HAS_PW: ${{ secrets.APPLE_PASSWORD != '' }}
+          HAS_TEAM: ${{ secrets.APPLE_TEAM_ID != '' }}
+        run: |
+          missing=()
+          [ "$HAS_CERT" = "true" ] || missing+=(APPLE_CERTIFICATE)
+          [ "$HAS_CERT_PW" = "true" ] || missing+=(APPLE_CERTIFICATE_PASSWORD)
+          [ "$HAS_IDENTITY" = "true" ] || missing+=(APPLE_SIGNING_IDENTITY)
+          [ "$HAS_ID" = "true" ] || missing+=(APPLE_ID)
+          [ "$HAS_PW" = "true" ] || missing+=(APPLE_PASSWORD)
+          [ "$HAS_TEAM" = "true" ] || missing+=(APPLE_TEAM_ID)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::macOS signing secrets missing: ${missing[*]} — リリースは署名必須です (Settings > Secrets に登録)"
+            exit 1
+          fi
+          echo "all signing secrets present"
+
       - name: Build & release (tauri-action)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # ---- macOS 署名 + notarization (Developer ID) ----
-          # Secrets が空なら tauri-action/bundler は署名処理をスキップし、従来どおり
-          # 未署名でビルドされる (空 = falsy 扱い)。win ジョブでは無視される。
-          # 値は GitHub Secrets のみで管理 — ログ/コードには出さない。
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # notarization (Apple ID + App用パスワード方式)。成功時は staple まで自動
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # mac ジョブにのみ渡す (win ジョブや beforeBuildCommand 配下へ不要に
+          # 広げない)。値は GitHub Secrets のみで管理 — ログ/コードには出さない。
+          # 存在チェックは上の Require signing secrets ステップで fail fast 済み。
+          APPLE_CERTIFICATE: ${{ contains(matrix.platform, 'macos') && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ contains(matrix.platform, 'macos') && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ contains(matrix.platform, 'macos') && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          # notarization (Apple ID + App用パスワード [appleid.apple.com で発行] 方式)。
+          # 成功時は staple まで自動
+          APPLE_ID: ${{ contains(matrix.platform, 'macos') && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ contains(matrix.platform, 'macos') && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ contains(matrix.platform, 'macos') && secrets.APPLE_TEAM_ID || '' }}
         with:
           # beforeBuildCommand (npm run build:web) は tauri.conf.json に定義済み
           tagName: ${{ github.ref_name }}
