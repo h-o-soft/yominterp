@@ -233,3 +233,19 @@ describe('splitBlocks (改行・空行の完全保持)', () => {
     expect(blocks.map((b) => b.blank)).toEqual([false, true, false]);
   });
 });
+
+describe('クラシックは paged=false でも wrap する契約 (char 画面の横はみ出し防止)', () => {
+  // anchorhead 冒頭の prologue が keypress 待ち(char query)経由で paged=false になり、
+  // splitForPaging ごとスキップされて 80桁 wrap が当たらず横はみ出していた回帰の防止。
+  // ページ送り([More])だけ paged で制御し、wrap はクラシックで常に行う。
+  const main = readFileSync('src/web/main.ts', 'utf8');
+  it('renderGameText は classic なら paged に依らず wrap する', () => {
+    const fn = main.slice(main.indexOf('async function renderGameText'), main.indexOf('async function renderGameText') + 800);
+    expect(fn).toContain('wrapToLines(ja, CLASSIC_COLS)'); // paged=false 時も wrap
+    expect(fn).toContain('settings.classicMode');
+  });
+  it('printBodyParagraphs も classic なら paged に依らず wrap する', () => {
+    const fn = main.slice(main.indexOf('async function printBodyParagraphs'), main.indexOf('async function printBodyParagraphs') + 1200);
+    expect(fn).toContain('wrapToLines(ja, CLASSIC_COLS)');
+  });
+});

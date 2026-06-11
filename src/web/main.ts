@@ -368,9 +368,15 @@ async function renderGameText(body: string, statusLineRaw?: string, paged = true
   showStatus(statusLineRaw);
   if (body.trim() === '') return '';
   const ja = await translateOut(body);
-  const usePager = settings.classicMode && paged;
-  for (const chunk of usePager ? splitForPaging(ja, CLASSIC_COLS, classicPageLines()) : [ja]) {
-    if (usePager) await pageGate(chunk);
+  // クラシックは常に 80 桁で wrap する。ページ送り ([More]) だけ paged で制御
+  // (char 画面など paged=false でも 80 桁 wrap は維持し、横はみ出しを防ぐ)。
+  const chunks = settings.classicMode
+    ? paged
+      ? splitForPaging(ja, CLASSIC_COLS, classicPageLines())
+      : [wrapToLines(ja, CLASSIC_COLS).join('\n')]
+    : [ja];
+  for (const chunk of chunks) {
+    if (settings.classicMode && paged) await pageGate(chunk);
     print('', chunk);
   }
   if (settings.showRaw && ja !== body) print('raw', body);
@@ -466,7 +472,13 @@ async function printBodyParagraphs(
     const plain = block.lines.map((l) => l.spans.map((s) => s.text).join('')).join('\n');
     const ja = await translateOut(plain);
     const style = uniformStyle(block.lines) ?? fallbackStyle;
-    const chunks = usePager ? splitForPaging(ja, CLASSIC_COLS, classicPageLines()) : [ja];
+    // クラシックは常に 80 桁 wrap。ページ送りだけ usePager(=classic&&paged)で制御し、
+    // paged=false (char 画面等) でも wrap を維持して横はみ出しを防ぐ。
+    const chunks = settings.classicMode
+      ? usePager
+        ? splitForPaging(ja, CLASSIC_COLS, classicPageLines())
+        : [wrapToLines(ja, CLASSIC_COLS).join('\n')]
+      : [ja];
     // 保留空行 + 段落先頭をまとめて改ページ判定 (空行が境界でちぎれて消えない)
     if (usePager) await pager.beforeAppend(pendingBlanks + estimateLines(chunks[0]!, CLASSIC_COLS));
     emitBlanks(); // 改ページ後ならクリア済みの次ページ先頭に空行を繰り越す
