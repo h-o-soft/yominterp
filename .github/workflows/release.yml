@@ -37,11 +37,30 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          # contents:write ジョブの書き込みトークンを git 認証情報として残さない
+          # (npm ci のライフサイクルスクリプト等、後続処理からの push を防ぐ)
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 20
+
+      # タグの無検証リリースを防ぐガード: タグがアプリの version と一致し
+      # (rc サフィックス許容: v0.1.0-rc.1 ⊃ 0.1.0)、main 上のコミットであること
+      - name: Verify tag matches app version and sits on main
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          case "$TAG" in
+            "$VER"|"$VER"-*) echo "tag v$TAG matches app version $VER" ;;
+            *) echo "::error::tag v$TAG does not match tauri.conf.json version $VER"; exit 1 ;;
+          esac
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor HEAD origin/main \
+            || { echo "::error::tagged commit is not on main"; exit 1; }
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -74,8 +93,8 @@ jobs:
             英語のインタラクティブフィクションを日本語で遊ぶプレイヤー yominterp のデスクトップ版です。
 
             ⚠ **このビルドは署名されていません。** 初回起動時に OS の警告が出ます:
-            - **macOS**: 「開発元を確認できない」と出たら、アプリを**右クリック → 開く**。
-              「壊れている」と出る場合はターミナルで `xattr -dr com.apple.quarantine /Applications/yominterp.app` を実行してから開いてください。
+            - **macOS**: アプリを**右クリック → 開く**。それでも開けない場合は
+              **システム設定 → プライバシーとセキュリティ** の下部に表示される**「このまま開く」**を選んでください (Apple 公式の未署名アプリの開き方)。
             - **Windows**: SmartScreen の画面で**「詳細情報」→「実行」**を選んでください。
 
             遊び方・LLM の設定は [README](https://github.com/h-o-soft/yominterp#readme) を参照してください。
