@@ -172,6 +172,8 @@ export function filterUnintendedMetas(
 
 export interface EntryTranslatorOptions {
   contextTurns: number;
+  /** ゲーム識別子 (storyId)。別ゲームのコマンドが混ざらないようキャッシュキーに含める */
+  scope?: string;
   /** 直近文脈の文字数上限 (長文ゲームでのプロンプト肥大対策)。既定 4096 */
   contextChars?: number;
   logger?: EventLogger;
@@ -330,7 +332,7 @@ export class EntryTranslator {
     // (temperature 0 でもローカル LLM は完全再現しないため「入力ごとに挙動が変わる」
     //  のを構造的に防ぐ)。キーは language + prompt/辞書版 + model + 入力 + 文脈。
     const ctx = this.recentText(recent);
-    const key = `entry:${this.language}:${this.promptHash}:${this.entryModelId()}:${fnv1a(jaInput + ' ' + ctx)}`;
+    const key = `entry:${this.opts.scope ?? ''}:${this.language}:${this.promptHash}:${this.entryModelId()}:${fnv1a(jaInput + ' ' + ctx)}`;
     const cached = this.mem.get(key) ?? (await this.cache?.get(key));
     if (cached !== undefined) {
       this.mem.set(key, cached);

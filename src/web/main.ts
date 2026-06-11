@@ -793,6 +793,7 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       prompts,
       {
         contextTurns: settings.contextTurns,
+        scope: id,
         logger,
         language: settings.language,
       },
@@ -805,6 +806,7 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       new IdbCacheStore(`exit:${id}`),
       logger,
       settings.language,
+      id,
     );
     const glossaryNote = print('thinking', tr('glossaryPreparing'));
     try {

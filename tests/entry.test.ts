@@ -386,3 +386,31 @@ describe('EntryTranslator 入口キャッシュ (決定論)', () => {
     expect(callCount()).toBe(2); // 文脈違いは別キー → 別 LLM 呼び出し
   });
 });
+
+describe('EntryTranslator scope (cross-game 混入防止)', () => {
+  function memCacheShared() {
+    const store = new Map<string, string>();
+    return { get: async (k: string) => store.get(k), set: async (k: string, v: string) => void store.set(k, v) };
+  }
+  function makeScoped(scope: string, responses: string[], cache: { get: (k: string) => Promise<string | undefined>; set: (k: string, v: string) => Promise<void> }) {
+    let n = 0;
+    const transport: LLMTransport = {
+      post: async () => { const c = responses[Math.min(n, responses.length - 1)] ?? ''; n++; return { choices: [{ message: { content: c } }] }; },
+      get: async () => ({}),
+    };
+    const llm = new LLMClient(transport, { model: 'm', entryModel: 'entry-m', temperature: 0, maxTokens: 100, timeoutMs: 1000 });
+    return new EntryTranslator(llm, FAKE_PROMPTS, { contextTurns: 2, scope }, cache);
+  }
+
+  it('storyId(scope) が違えば同じ CacheStore でもキーが混ざらない', async () => {
+    const cache = memCacheShared(); // 同一の永続ストアを共有 (CLI の単一ファイル相当)
+    const gameA = makeScoped('game-A', ['take lamp'], cache);
+    const gameB = makeScoped('game-B', ['open box'], cache);
+    await gameA.init(VOCAB);
+    await gameB.init(VOCAB);
+    const a = await gameA.translate('それを操作', []);
+    const b = await gameB.translate('それを操作', []); // 同じ入力でも別ゲーム
+    expect(a).toEqual(['take lamp']);
+    expect(b).toEqual(['open box']); // game-A のキャッシュ値 (take lamp) が混入しない
+  });
+});

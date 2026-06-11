@@ -19,7 +19,7 @@ const APP_ERROR_JA: Record<AppErrorCode, string> = {
   noCommands: 'LLM がコマンドを生成できませんでした。別の言い方を試してください。',
 };
 import { EntryTranslator, usefulObjectNames } from '../core/translate/entry.js';
-import { ExitTranslator } from '../core/translate/exit.js';
+import { ExitTranslator, fnv1a } from '../core/translate/exit.js';
 import { extractDictionary } from '../core/zfile/dictionary.js';
 import { objectNames } from '../core/zfile/objects.js';
 import { FetchTransport, FileCacheStore, FilePromptProvider, JsonlLogger } from './adapters.js';
@@ -73,11 +73,15 @@ async function main(): Promise<void> {
 
   const prompts = new FilePromptProvider(['prompts', 'fixtures']);
   const language = cfg.language ?? DEFAULT_LANGUAGE;
+  // ゲーム識別子。CLI は単一ゲーム固定だが、共有キャッシュファイルに別ゲームの
+  // 訳/コマンドが混ざらないようキャッシュキーに含める (storyId 相当)。
+  const scope = fnv1a(cfg.engine.storyFile);
   const entry = new EntryTranslator(
     llm,
     prompts,
     {
       contextTurns: cfg.context.turns,
+      scope,
       logger,
       language,
     },
@@ -90,6 +94,7 @@ async function main(): Promise<void> {
     new FileCacheStore(`${cfg.cacheDir}/exit-translations.json`),
     logger,
     language,
+    scope,
   );
   // 固有名詞グロッサリ (Cora=コーラ 等の正準表記) をオブジェクト名から構築
   await exit.init(usefulObjectNames(vocab.objectNames));
