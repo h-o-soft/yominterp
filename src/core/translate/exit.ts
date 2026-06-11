@@ -149,7 +149,10 @@ export class ExitTranslator {
     const lines = [...this.glossary.entries()].map(([en, ja]) => `- ${en} = ${ja}`);
     return (
       this.systemPrompt +
-      '\n\n# 固有名詞の正準表記 (必ずこの表記を使う。単独の語でも同じ)\n' +
+      // 「文体の手がかりにしない」: 女性NPC名のリストが地の文の口調まで
+      // 女性化させる副作用の抑止 (ghosts で実測・再現した汚染経路)
+      '\n\n# 固有名詞の正準表記 (必ずこの表記を使う。単独の語でも同じ。' +
+      'この表記リストは表記の統一のみに使い、文体・口調の手がかりにしない)\n' +
       lines.join('\n')
     );
   }

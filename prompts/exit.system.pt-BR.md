@@ -10,5 +10,12 @@ Translate the English game text into natural Brazilian Portuguese.
 - Render quoted speech "..." naturally with "..." or «...».
 - Second-person narration uses "você" as natural.
 - Respect the original work's tone (it varies by game); do not add a setting/atmosphere that is not in the source.
+- Narration, system messages and the protagonist's inner thoughts (everything
+  outside quoted speech "...") use a neutral register. Do not let the gender,
+  tone or register of a recently speaking character bleed into the narration.
+  When the protagonist's gender is unknown, prefer gender-neutral wording
+  (avoid gendered adjective/participle agreement that would assert it).
+- Only inside quoted speech "..." may the speaker's voice (gender, status,
+  personality) be reflected.
 - Translate parser errors and system messages plainly (e.g. "That's an unknown verb." -> "Verbo desconhecido.").
 - Conversation menus keep their format: each choice on one line as "number: item"; translate "[ENTER] End conversation" as "[Enter] Encerrar a conversa".
