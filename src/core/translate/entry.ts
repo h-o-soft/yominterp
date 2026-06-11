@@ -14,7 +14,8 @@ import {
   promptFileName,
 } from '../i18n/language.js';
 import { type ChatMessage, type LLMClient } from '../llm/client.js';
-import type { EventLogger, PromptProvider } from '../ports.js';
+import type { CacheStore, EventLogger, PromptProvider } from '../ports.js';
+import { fnv1a } from './exit.js';
 import { NULL_LOGGER } from '../ports.js';
 
 export interface GameVocabulary {
@@ -171,6 +172,8 @@ export function filterUnintendedMetas(
 
 export interface EntryTranslatorOptions {
   contextTurns: number;
+  /** ゲーム識別子 (storyId)。別ゲームのコマンドが混ざらないようキャッシュキーに含める */
+  scope?: string;
   /** 直近文脈の文字数上限 (長文ゲームでのプロンプト肥大対策)。既定 4096 */
   contextChars?: number;
   logger?: EventLogger;
@@ -257,16 +260,26 @@ export class EntryTranslator {
   /** 辞書の切り詰め語長 (実辞書の最大語長から判定: v3=6, v4+=9) */
   private dictWordLen = 9;
   private readonly aux: AuxPrompts;
+  /** system プロンプト + few-shot の版数ハッシュ (キャッシュキー用) */
+  private promptHash = '0';
+  private readonly mem = new Map<string, string>();
   private readonly logger: EventLogger;
+  private readonly language: LanguageCode;
 
   constructor(
     private readonly llm: LLMClient,
     private readonly prompts: PromptProvider,
     private readonly opts: EntryTranslatorOptions,
+    private readonly cache?: CacheStore,
   ) {
     this.logger = opts.logger ?? NULL_LOGGER;
+    this.language = opts.language ?? DEFAULT_LANGUAGE;
     // 補助プロンプトの言語 (ja=日本語/他=英語)。ja は現状不変
-    this.aux = AUX_PROMPTS[LANGUAGE_PROFILES[opts.language ?? DEFAULT_LANGUAGE].auxPromptLang];
+    this.aux = AUX_PROMPTS[LANGUAGE_PROFILES[this.language].auxPromptLang];
+  }
+
+  private entryModelId(): string {
+    return this.llm.config.entryModel ?? this.llm.config.model;
   }
 
   async init(vocab: GameVocabulary): Promise<void> {
@@ -293,6 +306,9 @@ export class EntryTranslator {
     } else {
       this.fewshot = JSON.parse(await this.prompts.load(fewshotName)) as FewShotExample[];
     }
+    // system プロンプト (辞書/オブジェクト埋め込み済み) + few-shot を版数ハッシュに。
+    // 辞書・プロンプト・few-shot が変わればキャッシュを無効化する。
+    this.promptHash = fnv1a(this.systemPrompt + '\u0000' + JSON.stringify(this.fewshot));
   }
 
   /** 応答からコマンドを抽出 (辞書フィルタ → 候補フォールバック → meta ガード) */
@@ -312,6 +328,19 @@ export class EntryTranslator {
 
   /** 日本語入力 → 英コマンド列。コマンドが 1 つも取れなければ 1 回だけ言い直させる */
   async translate(jaInput: string, recent: TurnContext[]): Promise<string[]> {
+    // 決定論キャッシュ: 同じ入力＋同じ直近文脈なら毎回同じ英コマンドにする
+    // (temperature 0 でもローカル LLM は完全再現しないため「入力ごとに挙動が変わる」
+    //  のを構造的に防ぐ)。キーは language + prompt/辞書版 + model + 入力 + 文脈。
+    const ctx = this.recentText(recent);
+    const key = `entry:${this.opts.scope ?? ''}:${this.language}:${this.promptHash}:${this.entryModelId()}:${fnv1a(jaInput + ' ' + ctx)}`;
+    const cached = this.mem.get(key) ?? (await this.cache?.get(key));
+    if (cached !== undefined) {
+      this.mem.set(key, cached);
+      const commands = JSON.parse(cached) as string[];
+      this.logger.log({ event: 'entry.cacheHit', jaInput, commands });
+      return commands;
+    }
+
     const messages = this.buildMessages(jaInput, recent);
     const first = await this.chatEntry(messages);
     let { kept, dropped } = this.extractCommands(first, jaInput);
@@ -325,6 +354,9 @@ export class EntryTranslator {
       ({ kept } = this.extractCommands(await this.chatEntry(retryMessages), jaInput));
     }
     this.logger.log({ event: 'entry.translate', jaInput, commands: kept });
+    const serialized = JSON.stringify(kept);
+    this.mem.set(key, serialized);
+    await this.cache?.set(key, serialized);
     return kept;
   }
 

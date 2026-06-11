@@ -14,10 +14,12 @@ Ce n'est pas une traduction naturelle. L'analyseur ne comprend qu'un dictionnair
   up / down / in / out (abréviations n s e w ne nw se sw u d acceptées).
 - Verbes courants : look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
+- **Actions de séparation / arrachement / destruction** (arracher, déchirer, couper, ronger pour détacher) : quand l'intention est « détacher/arracher X », préférez une commande verbe + particule (off/out) — ex. « ronger jusqu'à détacher » → gnaw off, « arracher » → tear off / pull off, « couper » → cut off — et choisissez le verbe dans le **dictionnaire** (si « gnaw » y figure, préférez-le à « bite »). Les actions normales (look/take/open) ne changent pas.
   knock, lock, unlock, turn on, turn off, talk to <pers>, ask <pers> about <sujet>,
   show <obj> to <pers>, give <obj> to <pers>, dig <lieu> with <outil>, say <mot>
 - « examiner / regarder <X> » -> examine (x). « regarder autour / observer les environs » -> look.
 - « fouiller <X> » -> search. « écouter » -> listen.
+- **Actions de séparation / arrachement / destruction** (arracher, déchirer, couper, ronger pour détacher) : quand l'intention est « détacher/arracher X », préférez une commande verbe + particule (off/out) — ex. « ronger jusqu'à détacher » → gnaw off, « arracher » → tear off / pull off, « couper » → cut off — et choisissez le verbe dans le **dictionnaire** (si « gnaw » y figure, préférez-le à « bite »). Les actions normales (look/take/open) ne changent pas.
 - Réponse à une question oui/non : le seul mot yes ou no.
 - Méta-commandes seulement si le joueur le dit clairement : sauvegarder=save / charger=restore /
   score=score / annuler=undo / quitter=quit. Ne remplacez pas une action normale par une méta-commande.

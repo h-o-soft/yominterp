@@ -70,6 +70,8 @@ export class ExitTranslator {
     private readonly cache?: CacheStore,
     logger: EventLogger = NULL_LOGGER,
     language: LanguageCode = DEFAULT_LANGUAGE,
+    /** ゲーム識別子 (storyId)。別ゲームの訳が混ざらないようキャッシュキーに含める */
+    private readonly scope = '',
   ) {
     this.logger = logger;
     this.language = language;
@@ -104,7 +106,7 @@ export class ExitTranslator {
     const sorted = [...new Set(candidates)].sort();
     // language + glossary 構築プロンプト版数 + model をキーに含める
     // (glossary プロンプト改訂時に古い用語集を再利用しないように)
-    const cacheKey = `exit-glossary:${this.language}:${fnv1a(GLOSSARY_SYSTEM)}:${fnv1a(sorted.join('|') + '@' + this.exitModelId())}`;
+    const cacheKey = `exit-glossary:${this.scope}:${this.language}:${fnv1a(GLOSSARY_SYSTEM)}:${fnv1a(sorted.join('|') + '@' + this.exitModelId())}`;
     let listing = await this.cache?.get(cacheKey);
     if (listing === undefined) {
       const messages: ChatMessage[] = [
@@ -171,7 +173,7 @@ export class ExitTranslator {
     if (normalized === '') return '';
     // キャッシュキーに language + prompt版数 + model + glossary版数 を含め、
     // 言語間/プロンプト改訂/モデル違い/表記確定前の訳が混ざらないようにする。
-    const key = `exit:${this.language}:${this.promptHash}:${this.exitModelId()}:${this.glossaryHash}:${fnv1a(normalized)}`;
+    const key = `exit:${this.scope}:${this.language}:${this.promptHash}:${this.exitModelId()}:${this.glossaryHash}:${fnv1a(normalized)}`;
 
     const hit = this.mem.get(key) ?? (await this.cache?.get(key));
     if (hit !== undefined) {

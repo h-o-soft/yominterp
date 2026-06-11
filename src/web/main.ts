@@ -653,6 +653,31 @@ async function resolveKeypresses(out: EngineOutput): Promise<EngineOutput> {
   return cur;
 }
 
+/** 英語コマンドを入口翻訳せず直接ゲームへ送る (「>」直接入力の実体) */
+async function sendRawCommand(raw: string): Promise<void> {
+  if (engine === undefined || session === undefined) return;
+  if (raw === '') {
+    setBusy(false);
+    return;
+  }
+  setBusy(true);
+  pager.reset();
+  print('cmd', `> ${raw}`);
+  try {
+    let out = await sendResolvingPauses(engine, raw);
+    if (out.kind === 'query' && out.request === 'char') {
+      out = await resolveKeypresses(out);
+    }
+    session.pushGameOutput(out.body);
+    await presentOutput(out);
+    if (out.kind === 'gameover') gameOver = true;
+  } catch (err) {
+    print('system', tr('error', { err: String(err) }));
+  } finally {
+    setBusy(false);
+  }
+}
+
 async function handleUserInput(ja: string): Promise<void> {
   if (engine === undefined || session === undefined || entry === undefined) {
     print('system', tr('loadGameFirst'));
@@ -660,6 +685,13 @@ async function handleUserInput(ja: string): Promise<void> {
   }
   if (gameOver) {
     print('system', tr('gameEnded'));
+    return;
+  }
+  // 「>」プレフィックスは英語コマンドを入口翻訳せずそのままゲームへ送る回復手段
+  // (詰まった時にプレイヤーが正解の英コマンドを直接打てる。LLM を通さないので
+  //  完全に決定論的。メニュー選択中は通常処理に委ねる)。
+  if (activeMenu === undefined && ja.trimStart().startsWith('>')) {
+    await sendRawCommand(ja.trimStart().slice(1).trim());
     return;
   }
   setBusy(true);
@@ -756,11 +788,17 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
 
     llm = makeLLM();
     const prompts = new BundledPromptProvider();
-    entry = new EntryTranslator(llm, prompts, {
-      contextTurns: settings.contextTurns,
-      logger,
-      language: settings.language,
-    });
+    entry = new EntryTranslator(
+      llm,
+      prompts,
+      {
+        contextTurns: settings.contextTurns,
+        scope: id,
+        logger,
+        language: settings.language,
+      },
+      new IdbCacheStore(`entry:${id}`),
+    );
     await entry.init(info.vocab);
     exitTr = new ExitTranslator(
       llm,
@@ -768,6 +806,7 @@ async function startGame(data: Uint8Array, filename: string): Promise<void> {
       new IdbCacheStore(`exit:${id}`),
       logger,
       settings.language,
+      id,
     );
     const glossaryNote = print('thinking', tr('glossaryPreparing'));
     try {
