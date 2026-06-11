@@ -12,7 +12,6 @@ test('クラシック: 半角80桁・全角40文字・コンテナ内容幅が�
 }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '閉じる' }).click();
-  await expect(page.locator('body')).toHaveClass(/classic/); // クラシックが既定
   const r = await page.evaluate(() => {
     const t = document.getElementById('terminal')!;
     const probe = (s: string): number => {

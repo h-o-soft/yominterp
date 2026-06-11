@@ -24,6 +24,9 @@
   --accent: #7fd0a0;
   --warn: #e0c070;
   --status-bg: #1d2a22;
+  /* クラシック端末の格子: 1 マス = --term-lh × --term-font (行高は固定 px 換算) */
+  --term-font: 15px;
+  --term-lh: 1.55;
   font-size: 15px;
 }
 * { box-sizing: border-box; }
@@ -35,12 +38,29 @@ body {
      桁ズレは calibrateClassicMetrics (size-adjust 校正) が保険として吸収する */
   font-family: "PlemolJP HS", "SF Mono", "Menlo", "Consolas", "Noto Sans Mono CJK JP", monospace;
 }
-#app { position: relative; display: flex; flex-direction: column; height: 100%; margin: 0 auto; max-width: 84ch; }
+#app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin: 0 auto;
+  /* content 80 桁 + #terminal の左右 padding (0.8rem×2) + 縦スクロールバー溝。
+     幅は実測 (calibrateClassicMetrics が --term-width に実フォントの 80 桁幅を、
+     measureScrollbarGutter が --scrollbar-w にバー溝の実幅を設定する)。
+     ch 単位は ASCII フォントの「0」基準で、CJK 全角が半角 2 桁にならない環境では
+     右に死に余白ができるため使わない (未計測時のみ 80ch)。バー溝を加算しないと
+     常時表示スクロールバー環境でバーが 80 桁の内側から幅を奪い、右端の文字が
+     隠れる + 押し出しで横スクロールが発生する */
+  max-width: calc(var(--term-width, 80ch) + 1.6rem + var(--scrollbar-w, 0px));
+  /* ウィンドウを縦に伸ばしても本文枠は 24 行のまま、余りは上下の余白になる */
+  justify-content: center;
+}
 
 #topbar {
   display: flex; justify-content: space-between; align-items: center;
   background: var(--status-bg); padding: 0.3rem 0.8rem; gap: 0.5rem;
   white-space: pre; overflow: hidden;
+  border-bottom: 1px solid #2a3a30;
 }
 /* ステータスラインは上部バー全幅。左=場所名 / 右=得点/手数・日付等を右寄せ */
 #status-line {
@@ -74,17 +94,24 @@ body {
 #topbar-menu button:hover { background: var(--status-bg); }
 #topbar-menu button.active { color: var(--accent); }
 
-/* overflow-x: hidden — 横スクロールバーは常に出さない (本文は 80 桁で折返し済み)。
+/* ==== クラシック端末 (唯一の表示モデル) — 古典端末 80 桁 × 本文 24 行 ====
+   overflow-x: hidden — 横スクロールバーは常に出さない (本文は 80 桁で折返し済み)。
    scrollbar-gutter: stable — 縦バーを padding の外側の溝に置き、本文 80 桁に
    絶対に重ねない (常時表示スクロールバー環境では溝の実幅を --scrollbar-w として
    実測し #app 幅へ加算する。overlay バー環境では溝 0 = バーは右 padding 上)。 */
 #terminal {
-  flex: 1;
+  font-size: var(--term-font);
+  line-height: var(--term-lh);
+  /* 本文 24 行 (line-height 基準) + 上下 padding。flex: 0 1 auto = 拡大せず・縮小可 */
+  flex: 0 1 auto;
+  height: calc(24 * var(--term-lh) * var(--term-font) + 1.6rem);
+  max-height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
-  padding: 1rem 0.8rem;
-  line-height: 1.6;
+  /* 80 桁で wrap 済みのテキストを出すので、CSS では折り返さない (pre) */
+  white-space: pre;
+  padding: 0.8rem;
 }
 /* 端末の縦スクロールバーを自前テーマ化。::-webkit-scrollbar を指定すると常に
    クラシック型 (レイアウト幅を持つ) になり、OS の「常時表示/オーバーレイ」設定に
@@ -94,14 +121,30 @@ body {
 #terminal::-webkit-scrollbar-track { background: transparent; }
 #terminal::-webkit-scrollbar-thumb { background: #2a3a30; border-radius: 5px; }
 #terminal::-webkit-scrollbar-thumb:hover { background: var(--dim); }
-#terminal p { margin: 0 0 0.7rem; white-space: pre-wrap; }
+/* 本文段落は折り返さない (wrapToLines が表示行を確定済み)。
+   段落マージンは 0 — 段落間の空きは出力側が空行 (1 表示行) で入れ、ページ送りの
+   行数計算と実表示を一致させる (margin が行数計算からズレる原因だった)。
+   line-height は font-size に依らず 1 行 = 行格子 1 マスに固定する
+   (cmd/raw は 0.85rem なので比率指定だと行高が縮み、ページ行数計算とズレる) */
+#terminal p {
+  white-space: pre;
+  margin: 0;
+  line-height: calc(var(--term-lh) * var(--term-font));
+}
 #terminal .user { color: var(--accent); }
 #terminal .cmd { color: var(--dim); font-size: 0.85rem; }
 #terminal .raw { color: var(--dim); font-size: 0.85rem; border-left: 2px solid var(--dim); padding-left: 0.6rem; }
 /* 原文ビューの本文段落 (p.raw) は枠幅で折り返す。原文は wrapToLines を通さず
-   span 装飾を保ったまま CSS で折るため pre-wrap。クラシックの p{pre} も上書きする
-   (grid 由来の桁保持原文 .gridbox.raw は pre のままで桁を保つ) */
+   span 装飾を保ったまま CSS で折るため pre-wrap。p{pre} より詳細度を上げて
+   上書きする (grid 由来の桁保持原文 .gridbox.raw は pre のままで桁を保つ) */
 #terminal p.raw { white-space: pre-wrap; }
+/* system 行 (エラー/案内 — wrapToLines を通らないアプリ文言) も折り返す。
+   pre のままだと長いエラーが横にはみ出す。折返しで増えた行も実測ページャが
+   正しく数える */
+#terminal p.system { white-space: pre-wrap; }
+/* 空行 (textContent='' の <p>) は margin:0 だと高さ 0 になり消えてしまう。
+   ゲーム由来の空行を必ず 1 行ぶんの高さで見せる */
+#terminal p:empty { min-height: calc(var(--term-lh) * var(--term-font)); }
 #terminal .system { color: var(--warn); }
 #terminal .thinking { color: var(--dim); font-style: italic; }
 
@@ -155,38 +198,25 @@ dialog button { font: inherit; cursor: pointer; }
    背景色は行ボックス全幅に乗る = 端末らしい全幅の地色 */
 #terminal p.styled { padding: 0 0.3rem; display: block; }
 
-/* quote box (上部 grid 由来): 固定ピッチ・ブロック表示 */
+/* quote box (上部 grid 由来): 固定ピッチ・ブロック表示。行格子に整列
+   (margin/padding 0 — 箱の前後の空きはゲーム由来の空行が作る。余白が行数計算と
+   ズレる原因だった。横 padding も 0 — 80 桁の grid 行 + padding が枠幅を超えて
+   横に溢れるのを防ぐ) */
 #terminal .gridbox {
   display: block;
-  white-space: pre-wrap;
-  margin: 0.8rem auto;
-  padding: 0.8rem 1.2rem;
+  white-space: pre;
+  margin: 0;
+  padding: 0;
   width: fit-content;
   max-width: 100%;
   text-align: left;
   border-radius: 2px;
-  line-height: 1.5;
+  line-height: calc(var(--term-lh) * var(--term-font));
 }
 #terminal .gridbox.raw { white-space: pre; overflow-x: auto; }
 
 /* ステータスバーのゲーム指定色は inline style で上書きされる */
 
-/* ==== クラシック端末モード (既定) — 古典端末 80 桁 × 本文 24 行 ==== */
-/* 横 80 桁・縦 24 行の枠を固く守る。ウィンドウを縦に伸ばしても本文枠は 24 行の
-   まま、余りは枠外 (上下) の余白になる (justify-content)。
-   ステータスは上部バー、入力欄は下部 = 枠外 (本文領域 = 24 行)。 */
-body.classic { --term-font: 15px; --term-lh: 1.55; }
-body.classic #app {
-  /* content 80 桁 + #terminal の左右 padding (0.8rem×2) + 縦スクロールバー溝。
-     幅は実測 (calibrateClassicMetrics が --term-width に実フォントの 80 桁幅を、
-     measureScrollbarGutter が --scrollbar-w にバー溝の実幅を設定する)。
-     ch 単位は ASCII フォントの「0」基準で、CJK 全角が半角 2 桁にならない環境では
-     右に死に余白ができるため使わない (未計測時のみ 80ch)。バー溝を加算しないと
-     常時表示スクロールバー環境でバーが 80 桁の内側から幅を奪い、右端の文字が
-     隠れる + 押し出しで横スクロールが発生する */
-  max-width: calc(var(--term-width, 80ch) + 1.6rem + var(--scrollbar-w, 0px));
-  justify-content: center;
-}
 /* 実測校正済み ASCII フォント (size-adjust で半角 advance = 全角の 1/2)。
    同梱 PlemolJP HS が読めている間は校正自体が発動しない (実測が 1:2 になるため)。
    フォント読込失敗時のフォールバック専用 — システム等幅の桁ズレをここで吸収する。
@@ -194,65 +224,6 @@ body.classic #app {
 body.font-calibrated #terminal {
   font-family: "PlemolJP HS", 'yomi-term-ascii', "SF Mono", "Menlo", "Consolas", "Noto Sans Mono CJK JP", monospace;
 }
-body.classic #terminal {
-  font-size: var(--term-font);
-  line-height: var(--term-lh);
-  /* 本文 24 行 (line-height 基準) + 上下 padding。flex: 0 1 auto = 拡大せず・縮小可 */
-  flex: 0 1 auto;
-  height: calc(24 * var(--term-lh) * var(--term-font) + 1.6rem);
-  max-height: 100%;
-  /* 80 桁で wrap 済みのテキストを出すので、CSS では折り返さない (pre) */
-  white-space: pre;
-  padding: 0.8rem;
-}
-/* クラシックの本文段落は折り返さない (wrapToLines が表示行を確定済み)。
-   段落マージンは 0 — 段落間の空きは出力側が空行 (1 表示行) で入れ、ページ送りの
-   行数計算と実表示を一致させる (margin が行数計算からズレる原因だった)。
-   line-height は font-size に依らず 1 行 = 行格子 1 マスに固定する
-   (cmd/raw は 0.85rem なので比率指定だと行高が縮み、ページ行数計算とズレる) */
-body.classic #terminal p {
-  white-space: pre;
-  margin: 0;
-  line-height: calc(var(--term-lh) * var(--term-font));
-}
-/* 原文ビューの本文段落はクラシックでも折り返す (本文は wrapToLines 済みだが
-   原文は未 wrap のため CSS で折る)。p{pre} より詳細度を上げて上書きする */
-body.classic #terminal p.raw { white-space: pre-wrap; }
-/* system 行 (エラー/案内 — wrapToLines を通らないアプリ文言) も折り返す。
-   pre のままだと長いエラーが横にはみ出し、横スクロールバーがペイン高を変えて
-   行数計算を揺らす。折返しで増えた行も実測ページャが正しく数える */
-body.classic #terminal p.system { white-space: pre-wrap; }
-/* 空行 (textContent='' の <p>) は margin:0 だと高さ 0 になり消えてしまう。
-   ゲーム由来の空行を必ず 1 行ぶんの高さで見せる (これが無いとクラシックで
-   段落間の空行が視覚的に脱落していた) */
-body.classic #terminal p:empty { min-height: calc(var(--term-lh) * var(--term-font)); }
-/* quote box もクラシックでは行格子に整列 (margin/padding を持たせない —
-   箱の前後の空きはゲーム由来の空行が作る。余白が行数計算とズレる原因だった。
-   横 padding も 0 — 80 桁の grid 行 + padding が枠幅を超えて横スクロールバーが
-   出ると、その分ペイン高が縮んで行数計算が揺れる) */
-body.classic #terminal .gridbox {
-  white-space: pre;
-  margin: 0;
-  padding: 0;
-  line-height: calc(var(--term-lh) * var(--term-font));
-}
-/* [More]/キー待ちバーも正確に 1 行高に揃える (既定スタイルは margin+padding+border
-   で約 2.3 行分あり、classicPageLines の「バー分 = 1 行」予約を超えてページ先頭を
-   押し出していた)。box-sizing: border-box なので border 込みで 1 行高 */
-body.classic #terminal .more-bar {
-  margin: 0;
-  padding: 0;
-  height: calc(var(--term-lh) * var(--term-font));
-  line-height: calc(var(--term-lh) * var(--term-font) - 2px); /* 上下 border 1px ぶん */
-  border-radius: 0;
-}
-body.classic #topbar {
-  border-bottom: 1px solid #2a3a30;
-}
-/* モダン表示 (トグルで切替): 余白広めの可変幅・縦はウィンドウいっぱい */
-body.modern #app { max-width: 60rem; justify-content: flex-start; }
-body.modern #terminal { flex: 1; height: auto; }
-body.modern #terminal p { max-width: 56rem; }
 
 /* ==== ウェルカム画面 (起動時・ゲーム未読み込み) ==== */
 #terminal.welcoming { display: flex; flex-direction: column; justify-content: center; }
@@ -280,16 +251,20 @@ body.modern #terminal p { max-width: 56rem; }
   white-space: normal;
 }
 
-/* [More] / キー待ちの続行バー */
+/* [More] / キー待ちの続行バー。正確に 1 行高に揃える (余白・border 込みで
+   行格子 1 マス — これを超えると classicPageLines の「バー分 = 1 行」予約を
+   超えてページ先頭を押し出す)。box-sizing: border-box なので border 込み */
 #terminal .more-bar {
   display: block;
   width: 100%;
-  margin: 0.6rem 0;
-  padding: 0.3rem;
+  margin: 0;
+  padding: 0;
+  height: calc(var(--term-lh) * var(--term-font));
+  line-height: calc(var(--term-lh) * var(--term-font) - 2px); /* 上下 border 1px ぶん */
   background: var(--status-bg);
   color: var(--accent);
   border: 1px dashed var(--dim);
-  border-radius: 4px;
+  border-radius: 0;
   font: inherit;
   cursor: pointer;
   text-align: center;

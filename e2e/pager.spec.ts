@@ -140,7 +140,6 @@ test('クラシックの [More]/キー待ちバーは正確に 1 行高 (実描�
   // ページ先頭を押し出していた回帰の防止。実レンダリングの高さで固定する。
   await page.goto('/');
   await page.getByRole('button', { name: '閉じる' }).click();
-  await expect(page.locator('body')).toHaveClass(/classic/);
   const { barH, lineH } = await page.evaluate(() => {
     const t = document.getElementById('terminal')!;
     const bar = document.createElement('button');

@@ -76,7 +76,6 @@ test('クラシックモードの空行 (空 <p>) は実描画で 1 行ぶんの
   // データモデルの行数ではなく「実際に描画された高さ」で確認する。
   await page.goto('/');
   await page.getByRole('button', { name: '閉じる' }).click();
-  await expect(page.locator('body')).toHaveClass(/classic/); // クラシックが既定
   const rendered = await page.evaluate(() => {
     const t = document.getElementById('terminal')!;
     const p = document.createElement('p'); // 空段落 = 空行
@@ -142,7 +141,6 @@ test('原文ビューの本文段落 (p.raw) はクラシックでも折り返�
   // はみ出しで確認する (要素数でなく実レンダリング)。
   await page.goto('/');
   await page.getByRole('button', { name: '閉じる' }).click();
-  await expect(page.locator('body')).toHaveClass(/classic/); // クラシック既定
   const result = await page.evaluate(() => {
     const t = document.getElementById('terminal')!;
     const p = document.createElement('p');
