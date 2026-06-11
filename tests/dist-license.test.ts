@@ -20,4 +20,13 @@ describe.skipIf(!existsSync(DIST))('dist ライセンス検査', () => {
     const assets = readdirSync(DIST);
     expect(assets.some((f) => /^bocfel-.*\.wasm$/.test(f))).toBe(true);
   });
+
+  it('同梱フォント (PlemolJP HS, OFL) はライセンス全文と一緒に配布される', () => {
+    // OFL-1.1 はフォント再配布時のライセンス文の同梱を要求する。woff2 だけが
+    // dist に乗って OFL.txt が落ちる事故を防ぐ (public/ ごとコピーされる前提を固定)
+    const fonts = readdirSync('dist/fonts');
+    expect(fonts).toContain('PlemolJPHS-Regular.woff2');
+    expect(fonts).toContain('PlemolJPHS-Bold.woff2');
+    expect(fonts).toContain('OFL-PlemolJP.txt');
+  });
 });

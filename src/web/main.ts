@@ -812,6 +812,9 @@ async function handleUserInput(ja: string): Promise<void> {
 
 async function startGame(data: Uint8Array, filename: string): Promise<void> {
   setBusy(true);
+  // 同梱フォント (PlemolJP HS) の読込完了を待ってから描画を始める (FOUT 回避 +
+  // 桁計算がシステムフォントの実測で固定される事故の防止)。読込済みなら即解決。
+  await document.fonts?.ready;
   // 設定で選んだ言語を「次に開くゲーム」= ここで UI・本文ともに反映する
   // (ゲーム中の言語変更は commit では UI に即時反映していない。ここで揃う)
   applyUiLanguage();
@@ -1170,9 +1173,10 @@ function showWelcome(): void {
 wireSettings();
 wireTopbar();
 applyUiLanguage();
-calibrateClassicMetrics();
-// フォント遅延ロードで advance が変わる環境に備え、確定後にもう一度校正する
-void document.fonts?.ready.then(() => calibrateClassicMetrics());
+// 校正は同梱フォント (PlemolJP HS) の読込完了後に行う。読込前に測ると
+// フォールバックフォントの計測で size-adjust を誤発動し、同梱フォントが
+// 当たらなくなる (読込までは --term-width 未設定 = 80ch フォールバックで表示)
+void (document.fonts?.ready ?? Promise.resolve()).then(() => calibrateClassicMetrics());
 showWelcome();
 
 /**

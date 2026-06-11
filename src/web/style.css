@@ -1,3 +1,22 @@
+/* ==== 同梱フォント: PlemolJP HS (IBM Plex Mono + IBM Plex Sans JP 合成, OFL-1.1) ====
+   半角1:全角2 が設計保証された CJK 等幅 — クラシック端末の桁計算 (全角=2桁) を
+   フォント環境非依存にする。HS = Hidden Space (全角スペースの可視化マーカーなし)。
+   無改変の woff2 再パッケージ (原名維持)。ライセンス: public/fonts/OFL-PlemolJP.txt */
+@font-face {
+  font-family: 'PlemolJP HS';
+  src: url('/fonts/PlemolJPHS-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'PlemolJP HS';
+  src: url('/fonts/PlemolJPHS-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
 :root {
   --bg: #101418;
   --fg: #d8e0d8;
@@ -12,7 +31,9 @@ html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg);
   color: var(--fg);
-  font-family: "SF Mono", "Menlo", "Consolas", "Noto Sans Mono CJK JP", monospace;
+  /* 同梱の PlemolJP HS を最優先。読込失敗時はシステム等幅へフォールバックし、
+     桁ズレは calibrateClassicMetrics (size-adjust 校正) が保険として吸収する */
+  font-family: "PlemolJP HS", "SF Mono", "Menlo", "Consolas", "Noto Sans Mono CJK JP", monospace;
 }
 #app { position: relative; display: flex; flex-direction: column; height: 100%; margin: 0 auto; max-width: 84ch; }
 
@@ -145,10 +166,11 @@ body.classic #app {
   justify-content: center;
 }
 /* 実測校正済み ASCII フォント (size-adjust で半角 advance = 全角の 1/2)。
-   折返し計算の前提「全角=2桁」を実描画でも成立させ、80 桁の行幅を全角 40 文字と
-   一致させる。size-adjust 未対応環境では未知 family として素通りし後続へフォールバック */
+   同梱 PlemolJP HS が読めている間は校正自体が発動しない (実測が 1:2 になるため)。
+   フォント読込失敗時のフォールバック専用 — システム等幅の桁ズレをここで吸収する。
+   size-adjust 未対応環境では未知 family として素通りし後続へフォールバック */
 body.font-calibrated #terminal {
-  font-family: 'yomi-term-ascii', "SF Mono", "Menlo", "Consolas", "Noto Sans Mono CJK JP", monospace;
+  font-family: "PlemolJP HS", 'yomi-term-ascii', "SF Mono", "Menlo", "Consolas", "Noto Sans Mono CJK JP", monospace;
 }
 body.classic #terminal {
   font-size: var(--term-font);

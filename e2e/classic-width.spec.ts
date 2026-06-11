@@ -47,6 +47,44 @@ test('クラシック: 半角80桁・全角40文字・コンテナ内容幅が�
   expect(r.contentW).toBeLessThanOrEqual(Math.max(r.ascii80, r.cjk40) + 4);
 });
 
+test('同梱フォント PlemolJP HS が読み込まれ、半角:全角=1:2 がネイティブに成立する', async ({
+  page,
+}) => {
+  // フォント同梱の主旨: 環境のシステムフォントに依存せず「全角=半角×2」を設計保証する。
+  // 読込確認 + アクセント付きラテン (仏西独葡) も半角格子に乗ることを実描画で固定。
+  await page.goto('/');
+  await page.getByRole('button', { name: '閉じる' }).click();
+  await page.evaluate(() => document.fonts.ready);
+  const r = await page.evaluate(() => {
+    const t = document.getElementById('terminal')!;
+    const probe = (s: string): number => {
+      const el = document.createElement('span');
+      el.style.cssText = 'position:absolute; visibility:hidden; white-space:pre;';
+      el.textContent = s;
+      t.appendChild(el);
+      const w = el.getBoundingClientRect().width;
+      el.remove();
+      return w;
+    };
+    return {
+      loaded: document.fonts.check('15px "PlemolJP HS"'),
+      calibrated: document.body.classList.contains('font-calibrated'),
+      ascii80: probe('0'.repeat(80)),
+      cjk40: probe('あ'.repeat(40)),
+      accent80: probe('éñüçãàêßõ!'.repeat(8)), // 仏西独葡のアクセント付き 80 字 (Latin-1)
+      ideographicSpace40: probe('　'.repeat(40)), // U+3000 全角スペース (HS でも幅 1em 維持)
+    };
+  });
+  expect(r.loaded).toBe(true);
+  // ネイティブ 1:2 が成立しているので size-adjust 校正は発動していない
+  expect(r.calibrated).toBe(false);
+  expect(Math.abs(r.ascii80 - r.cjk40)).toBeLessThanOrEqual(1);
+  // アクセント付きラテンも半角 advance (Noto Mono CJK 不採用の決め手だった点)
+  expect(Math.abs(r.accent80 - r.ascii80)).toBeLessThanOrEqual(1);
+  // HS 版でも全角スペースの advance は全角のまま (空白演出の桁が崩れない)
+  expect(Math.abs(r.ideographicSpace40 - r.cjk40)).toBeLessThanOrEqual(1);
+});
+
 test('クラシック: 全角40文字の行が横にはみ出さない (実描画)', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '閉じる' }).click();

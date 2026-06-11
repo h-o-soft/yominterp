@@ -11,6 +11,10 @@
       content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https: http:; object-src 'none'; base-uri 'none'"
     />
     <title data-i18n="docTitle">yominterp — 英語IFを日本語で遊ぶ</title>
+    <!-- 同梱フォント (PlemolJP HS) の先読み — クラシック端末の桁計算を担う本命フォント。
+         as=font の preload は同一オリジンでも crossorigin 必須 -->
+    <link rel="preload" href="/fonts/PlemolJPHS-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/PlemolJPHS-Bold.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/src/web/style.css" />
   </head>
   <body>

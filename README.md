@@ -87,6 +87,10 @@ MIT License。個人の趣味プロジェクトです。
 同梱している仮想マシン (Bocfel / Glulxe / AsyncGlk / RemGlk-rs) はすべて MIT ライセンスです。
 ゲームファイルは同梱しておらず、著作権は各作者に帰属します。お手持ちの作品をご用意ください。
 
+フォントとして [PlemolJP](https://github.com/yuru7/PlemolJP) HS (Hidden Space 版, Copyright 2021 Yuko OTAWARA) を同梱しています。
+PlemolJP は **[SIL Open Font License 1.1](public/fonts/OFL-PlemolJP.txt)** の別ライセンス素材です (本体コードの MIT とは別)。
+フォントファイルは無改変のまま WOFF2 形式に再パッケージして同梱しています。
+
 例外として、スクリーンショット `docs/screenshot-ja.png` は *Nine-tenths of the Law* by Jack Welch ([CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/)) の二次的著作物のため、**この画像のみ CC BY-NC-SA 3.0** で提供されます (本体コードの MIT とは別)。
 
 ---
