@@ -33,7 +33,6 @@ export type MessageKey =
   | 'rawCommandHint'
   | 'menuOpen'
   | 'menuRaw'
-  | 'menuLayout'
   | 'menuSave'
   | 'menuRestore'
   | 'menuSettings'
@@ -111,7 +110,6 @@ const ja: Catalog = {
   welcomeHint: '右上の ☰ メニュー →「開く」でゲームを読み込み、「設定」で LLM 接続先を指定してください',
   menuOpen: '📂 開く…',
   menuRaw: '原文の表示',
-  menuLayout: '表示モード (クラシック/モダン)',
   menuSave: 'セーブ',
   menuRestore: 'ロード',
   menuSettings: '設定…',
@@ -191,7 +189,6 @@ const fr: Catalog = {
     'Menu ☰ en haut à droite → « Ouvrir » pour charger une partie, « Réglages » pour le LLM',
   menuOpen: '📂 Ouvrir…',
   menuRaw: "Afficher l'original",
-  menuLayout: 'Mode d’affichage (classique/moderne)',
   menuSave: 'Sauvegarder',
   menuRestore: 'Charger',
   menuSettings: 'Réglages…',
@@ -272,7 +269,6 @@ const es: Catalog = {
     'Menú ☰ arriba a la derecha → «Abrir» para cargar una partida, «Ajustes» para el LLM',
   menuOpen: '📂 Abrir…',
   menuRaw: 'Mostrar el original',
-  menuLayout: 'Modo de pantalla (clásico/moderno)',
   menuSave: 'Guardar',
   menuRestore: 'Cargar',
   menuSettings: 'Ajustes…',
@@ -353,7 +349,6 @@ const de: Catalog = {
     'Menü ☰ oben rechts → „Öffnen" zum Laden eines Spiels, „Einstellungen" für das LLM',
   menuOpen: '📂 Öffnen…',
   menuRaw: 'Original anzeigen',
-  menuLayout: 'Anzeigemodus (klassisch/modern)',
   menuSave: 'Speichern',
   menuRestore: 'Laden',
   menuSettings: 'Einstellungen…',
@@ -434,7 +429,6 @@ const ptBR: Catalog = {
     'Menu ☰ no canto superior direito → "Abrir" para carregar um jogo, "Configurações" para o LLM',
   menuOpen: '📂 Abrir…',
   menuRaw: 'Mostrar o original',
-  menuLayout: 'Modo de exibição (clássico/moderno)',
   menuSave: 'Salvar',
   menuRestore: 'Carregar',
   menuSettings: 'Configurações…',

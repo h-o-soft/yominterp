@@ -241,23 +241,23 @@ describe('splitForPaging (長段落のページ分割・wrap 込み)', () => {
 });
 
 /**
- * 回帰防止: 冒頭キー待ち・画面クリアはモード非依存で honor する。
- * (Tauri で classicMode=false 保存時にキー待ちが素通りしていた件の回帰防止。
- *  ロジックは main.ts のループ条件 — ここでは「分岐が classicMode を見ない」契約を
- *  ソース文字列で固定する軽量ガード。実挙動は e2e で確認。)
+ * 回帰防止: クラシック端末専用 (単一表示モデル) の契約。
+ * モダンモードは廃止済み — 表示モードの分岐 (settings.classicMode) が
+ * コードに復活しないことをソース文字列で固定する軽量ガード。実挙動は e2e で確認。
  */
 import { readFileSync } from 'node:fs';
-describe('キー待ち/クリアのモード非依存契約', () => {
+describe('クラシック専用 (単一表示モデル) 契約', () => {
   const main = readFileSync('src/web/main.ts', 'utf8');
-  it('honorClear は classicMode で分岐しない (両モードで実クリア)', () => {
-    const fn = main.slice(main.indexOf('function honorClear'), main.indexOf('function honorClear') + 200);
-    expect(fn).not.toContain('settings.classicMode');
+  it('表示モード分岐 (settings.classicMode) が存在しない', () => {
+    expect(main).not.toContain('classicMode');
+    expect(main).not.toContain('btn-layout');
+    const settings = readFileSync('src/web/settings.ts', 'utf8');
+    expect(settings).not.toContain('classicMode');
   });
-  it('keypress 待ち (resolveKeypresses) は classicMode 条件なしで waitForContinue を呼ぶ', () => {
+  it('keypress 待ち (resolveKeypresses) はキー待ちバーを出し、押下キーを VM へ送る', () => {
     // 冒頭引用画面・HELP 等の keypress 待ちは共通の resolveKeypresses が処理する。
     const fn = main.slice(main.indexOf('function resolveKeypresses'), main.indexOf('function resolveKeypresses') + 1600);
     expect(fn).toContain("waitForKey(tr('keyWaitBar'))");
-    expect(fn).not.toMatch(/if \(settings\.classicMode\)\s*\{\s*await waitForKey/);
     // char 入力要求のときに、押されたキーをそのまま VM へ送る (HELP の Q 等)
     expect(fn).toContain("request === 'char'");
     expect(fn).toContain('engine.send(key)');
@@ -289,18 +289,18 @@ describe('splitBlocks (改行・空行の完全保持)', () => {
   });
 });
 
-describe('クラシックは char 画面も含め常に wrap + ページングする契約 (縦横の溢れ防止)', () => {
+describe('char 画面も含め常に wrap + ページングする契約 (縦横の溢れ防止)', () => {
   // anchorhead 冒頭の prologue (34 表示行の char query 画面) が paged=false で
   // ページャをバイパスし、縦に溢れて冒頭がスクロールアウトしていた回帰の防止。
-  // クラシックの本文描画は常に splitForPaging (wrapToLines で物理行確定) + pageGate。
+  // 本文描画は常に splitForPaging (wrapToLines で物理行確定) + pageGate。
   const main = readFileSync('src/web/main.ts', 'utf8');
-  it('renderGameText は classic で常に splitForPaging + ページゲートを通す', () => {
+  it('renderGameText は常に splitForPaging + ページゲートを通す', () => {
     const fn = main.slice(main.indexOf('async function renderGameText'), main.indexOf('async function renderGameText') + 900);
     expect(fn).toContain('splitForPaging(ja, CLASSIC_COLS'); // 物理行確定 + ページ分割
     expect(fn).toContain('await pageGate(chunk)');
     expect(fn).not.toContain('paged'); // char 画面を例外にするフラグは廃止
   });
-  it('printBodyParagraphs も classic で常に splitForPaging する', () => {
+  it('printBodyParagraphs も常に splitForPaging する', () => {
     const fn = main.slice(main.indexOf('async function printBodyParagraphs'), main.indexOf('async function printBodyParagraphs') + 1600);
     expect(fn).toContain('splitForPaging(ja, CLASSIC_COLS');
     expect(fn).not.toContain('paged = '); // ページング例外フラグなし

@@ -84,11 +84,11 @@ function printStyledPara(text: string, style: SpanStyle | undefined): void {
 }
 
 /** quote box (grid ブロック) を装飾付きで出力する。中身は訳文テキスト。
- *  クラシックは pre 表示なので 80 桁で折り返してから入れる (横はみ出し防止) */
+ *  pre 表示なので 80 桁で折り返してから入れる (横はみ出し防止) */
 function printGridBox(text: string, style: SpanStyle | undefined): void {
   const div = document.createElement('div');
   div.className = 'gridbox';
-  div.textContent = settings.classicMode ? wrapToLines(text, CLASSIC_COLS).join('\n') : text;
+  div.textContent = wrapToLines(text, CLASSIC_COLS).join('\n');
   const css = styleToCss(style ?? { reverse: true });
   div.classList.add(...css.classes);
   if (css.inline !== '') div.setAttribute('style', css.inline);
@@ -226,13 +226,8 @@ const pager = new Pager(
   },
 );
 
-/**
- * ゲーム本文の表示前ゲート。[More] ページ送りはクラシック専用
- * (モダンはスクロールで一気に読める利点を保つため)。
- * キー待ち・画面クリアはモード非依存で honor する (別関数)。
- */
+/** ゲーム本文の表示前ゲート ([More] ページ送り)。 */
 async function pageGate(text: string): Promise<void> {
-  if (!settings.classicMode) return;
   await pager.beforeAppend(estimateLines(text, CLASSIC_COLS));
 }
 
@@ -408,11 +403,11 @@ async function renderGameText(body: string, statusLineRaw?: string): Promise<str
   showStatus(statusLineRaw);
   if (body.trim() === '') return '';
   const ja = await translateOut(body);
-  // クラシックは常に 80 桁で wrap (wrapToLines 経由の splitForPaging) し、
-  // [More] ページ送りも常に通す。char 画面 (keypress 待ち) も例外にしない —
-  // anchorhead 冒頭プロローグ (34 表示行) のような長い char 画面が
-  // ページャをバイパスして縦に溢れ、冒頭がスクロールアウトしていたため。
-  const chunks = settings.classicMode ? splitForPaging(ja, CLASSIC_COLS, classicPageLines()) : [ja];
+  // 常に 80 桁で wrap (wrapToLines 経由の splitForPaging) し、[More] ページ送りを
+  // 通す。char 画面 (keypress 待ち) も例外にしない — anchorhead 冒頭プロローグ
+  // (34 表示行) のような長い char 画面がページャをバイパスして縦に溢れ、
+  // 冒頭がスクロールアウトしていたため。
+  const chunks = splitForPaging(ja, CLASSIC_COLS, classicPageLines());
   for (const chunk of chunks) {
     await pageGate(chunk);
     print('', chunk);
@@ -486,7 +481,6 @@ async function printBodyParagraphs(
   fallbackStyle?: SpanStyle,
 ): Promise<string> {
   let shown = '';
-  const usePager = settings.classicMode;
   // 空行は即出力せず保留する。[More] のページクリアでページ境界の空行が
   // 消えないよう、保留空行は「次の段落とセット」で改ページ判定し、改ページ後の
   // 先頭に繰り越して出す (タイトル前の空行などが境界で失われないように)。
@@ -506,23 +500,21 @@ async function printBodyParagraphs(
     const plain = block.lines.map((l) => l.spans.map((s) => s.text).join('')).join('\n');
     const ja = await translateOut(plain);
     const style = uniformStyle(block.lines) ?? fallbackStyle;
-    // クラシックは常に 80 桁 wrap (splitForPaging が wrapToLines で物理行を確定)。
+    // 常に 80 桁 wrap (splitForPaging が wrapToLines で物理行を確定)。
     // char 画面 (keypress 待ち) もページ送りの例外にしない (縦溢れの根本対策)。
-    const chunks = settings.classicMode
-      ? splitForPaging(ja, CLASSIC_COLS, classicPageLines())
-      : [ja];
+    const chunks = splitForPaging(ja, CLASSIC_COLS, classicPageLines());
     // 保留空行 + 段落先頭をまとめて改ページ判定 (空行が境界でちぎれて消えない)
-    if (usePager) await pager.beforeAppend(pendingBlanks + estimateLines(chunks[0]!, CLASSIC_COLS));
+    await pager.beforeAppend(pendingBlanks + estimateLines(chunks[0]!, CLASSIC_COLS));
     emitBlanks(); // 改ページ後ならクリア済みの次ページ先頭に空行を繰り越す
     printStyledPara(chunks[0]!, style);
     for (const chunk of chunks.slice(1)) {
-      if (usePager) await pager.beforeAppend(estimateLines(chunk, CLASSIC_COLS));
+      await pager.beforeAppend(estimateLines(chunk, CLASSIC_COLS));
       printStyledPara(chunk, style);
     }
     shown += ja;
   }
   // ターン末尾の空行も保持する (集約・削除しない)
-  if (usePager && pendingBlanks > 0) await pager.beforeAppend(pendingBlanks);
+  if (pendingBlanks > 0) await pager.beforeAppend(pendingBlanks);
   emitBlanks();
   return shown;
 }
@@ -1047,11 +1039,6 @@ function wireSettings(): void {
   });
 }
 
-function applyLayoutMode(): void {
-  document.body.classList.toggle('classic', settings.classicMode);
-  document.body.classList.toggle('modern', !settings.classicMode);
-}
-
 /**
  * クラシック端末のフォント実測校正。
  * コンテナ幅を ch 単位 (= ASCII フォントの「0」advance) で決めると、CJK 全角が
@@ -1109,16 +1096,6 @@ function measureScrollbarGutter(): void {
 }
 
 function wireTopbar(): void {
-  const layoutButton = $('btn-layout');
-  applyLayoutMode();
-  layoutButton.classList.toggle('active', settings.classicMode);
-  layoutButton.addEventListener('click', () => {
-    settings.classicMode = !settings.classicMode;
-    layoutButton.classList.toggle('active', settings.classicMode);
-    applyLayoutMode();
-    saveSettings(settings);
-  });
-
   const rawButton = $('btn-raw');
   rawButton.classList.toggle('active', settings.showRaw);
   rawButton.addEventListener('click', () => {

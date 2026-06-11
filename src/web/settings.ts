@@ -15,8 +15,6 @@ export interface WebSettings {
   timeoutMs: number;
   contextTurns: number;
   showRaw: boolean;
-  /** クラシック端末モード (固定幅・端末風)。false でモダン可変幅 */
-  classicMode: boolean;
   /** プレイヤー言語 (既定 ja)。多言語は実験的オプション */
   language: LanguageCode;
 }
@@ -34,7 +32,6 @@ export const DEFAULT_SETTINGS: WebSettings = {
   timeoutMs: 120000,
   contextTurns: 2,
   showRaw: false,
-  classicMode: true,
   language: DEFAULT_LANGUAGE,
 };
 

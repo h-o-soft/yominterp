@@ -17,7 +17,8 @@
     <link rel="preload" href="/fonts/PlemolJPHS-Bold.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/src/web/style.css" />
   </head>
-  <body>
+  <!-- クラシック端末専用 (80×24 桁・1 モデル)。classic クラスは静的に常時付与 -->
+  <body class="classic">
     <div id="app">
       <!-- 上部バーはゲームのステータスライン専用 (場所名 + 右寄せ情報を省略せず全幅で)。
            アプリ操作の☰メニューは下部 (入力バー) に置き、ステータスと衝突させない -->
@@ -30,7 +31,6 @@
       <nav id="topbar-menu" hidden data-i18n-aria="menuTitle" aria-label="メニュー">
         <button id="btn-open-top" data-i18n="menuOpen">📂 開く…</button>
         <button id="btn-raw" data-i18n="menuRaw">原文の表示</button>
-        <button id="btn-layout" data-i18n="menuLayout">表示モード (クラシック/モダン)</button>
         <button id="btn-save" data-i18n="menuSave">セーブ</button>
         <button id="btn-restore" data-i18n="menuRestore">ロード</button>
         <button id="btn-settings" data-i18n="menuSettings">設定…</button>

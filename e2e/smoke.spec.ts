@@ -4,11 +4,27 @@
  * Node 結合テストでは壊れても検出できない層を対象にする。
  */
 import { existsSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { type Page, expect, test } from '@playwright/test';
 
 // ゲーム本体は同梱しない (サンプルなし方針)。WASM 起動の煙テストは
 // ローカル専用のテスト素材 refs/darkzil/darkpit.z3 がある環境でのみ実行する。
 const DARKPIT = 'refs/darkzil/darkpit.z3';
+
+/** クラシック端末のページ送り: 目的のテキストが出るまで [More] バーを送る */
+async function pageThrough(page: Page, text: string, timeoutMs = 45000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  const moreBar = page.locator('.more-bar', { hasText: '[More]' });
+  while (Date.now() < deadline) {
+    if ((await page.locator('#terminal').textContent())?.includes(text)) return;
+    if (await moreBar.isVisible()) {
+      await moreBar.click();
+      await page.waitForTimeout(200);
+      continue;
+    }
+    await page.waitForTimeout(300);
+  }
+  await expect(page.locator('#terminal')).toContainText(text); // 期限切れ → 失敗を表面化
+}
 
 test('ページが起動し、未設定なら設定ダイアログが開く', async ({ page }) => {
   await page.goto('/');
@@ -89,17 +105,13 @@ test('ローカルファイルが WASM で起動しイントロが表示され�
   page,
 }) => {
   test.skip(!existsSync(DARKPIT), `${DARKPIT} なし (ローカル専用テスト素材)`);
-  // WASM 起動確認が主旨なので、ページ送り ([More]) のないモダンモードで実行する
-  await page.addInitScript(() => {
-    localStorage.setItem('yominterp-settings', JSON.stringify({ classicMode: false }));
-  });
   await page.goto('/');
   await page.locator('#set-baseurl').fill('http://127.0.0.1:1/v1'); // 到達不能 endpoint
   await page.locator('#set-model').fill('dummy');
   await page.locator('#file-input').setInputFiles(DARKPIT);
-  // LLM 不通の警告 → 原文で起動
-  await expect(page.locator('#terminal')).toContainText('Dungeon Cell', { timeout: 45000 });
-  await expect(page.locator('#terminal')).toContainText('old man');
+  // LLM 不通の警告 → 原文で起動。イントロは複数ページ → [More] を送って本文へ
+  await pageThrough(page, 'Dungeon Cell');
+  await pageThrough(page, 'old man');
   await expect(page.locator('#input')).toBeEnabled();
 });
 
@@ -152,14 +164,11 @@ test('「>」プレフィックスで英語コマンドを入口翻訳せず直�
   page,
 }) => {
   test.skip(!existsSync(DARKPIT), `${DARKPIT} なし (ローカル専用テスト素材)`);
-  await page.addInitScript(() => {
-    localStorage.setItem('yominterp-settings', JSON.stringify({ classicMode: false }));
-  });
   await page.goto('/');
   await page.locator('#set-baseurl').fill('http://127.0.0.1:1/v1'); // 到達不能 = 入口LLMは使えない
   await page.locator('#set-model').fill('dummy');
   await page.locator('#file-input').setInputFiles(DARKPIT);
-  await expect(page.locator('#terminal')).toContainText('Dungeon Cell', { timeout: 45000 });
+  await pageThrough(page, 'Dungeon Cell'); // イントロの [More] を送る
   await expect(page.locator('#input')).toBeEnabled();
   // 入口 LLM は到達不能だが、「> look」は翻訳をバイパスして直接ゲームへ届く
   await page.locator('#input').fill('> look');
