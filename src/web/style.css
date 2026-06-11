@@ -137,9 +137,18 @@ dialog button { font: inherit; cursor: pointer; }
    ステータスは上部バー、入力欄は下部 = 枠外 (本文領域 = 24 行)。 */
 body.classic { --term-font: 15px; --term-lh: 1.55; }
 body.classic #app {
-  /* content 80 桁 + #terminal の左右 padding (0.8rem×2) */
-  max-width: calc(80ch + 1.6rem);
+  /* content 80 桁 + #terminal の左右 padding (0.8rem×2)。
+     幅は実測 (calibrateClassicMetrics が --term-width に実フォントの 80 桁幅を
+     設定する)。ch 単位は ASCII フォントの「0」基準で、CJK 全角が半角 2 桁に
+     ならない環境では右に死に余白ができるため使わない (未計測時のみ 80ch) */
+  max-width: calc(var(--term-width, 80ch) + 1.6rem);
   justify-content: center;
+}
+/* 実測校正済み ASCII フォント (size-adjust で半角 advance = 全角の 1/2)。
+   折返し計算の前提「全角=2桁」を実描画でも成立させ、80 桁の行幅を全角 40 文字と
+   一致させる。size-adjust 未対応環境では未知 family として素通りし後続へフォールバック */
+body.font-calibrated #terminal {
+  font-family: 'yomi-term-ascii', "SF Mono", "Menlo", "Consolas", "Noto Sans Mono CJK JP", monospace;
 }
 body.classic #terminal {
   font-size: var(--term-font);

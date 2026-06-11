@@ -21,6 +21,11 @@ const page = ctx.pages()[0] ?? (await ctx.newPage());
 page.setDefaultTimeout(540000);
 
 await page.goto('http://127.0.0.1:4173/');
+// 設定済みプロファイルでは設定ダイアログが自動で開かない → ☰ から開く
+if (!(await page.locator('#settings-dialog').evaluate((d) => (d as HTMLDialogElement).open))) {
+  await page.locator('#btn-menu').click();
+  await page.locator('#topbar-menu #btn-settings').click();
+}
 await page.locator('#set-baseurl').fill(BASE_URL);
 await page.locator('#set-model').fill('gemma-4-e4b-it-ud-japanese-imatrix');
 await page.locator('#file-input').setInputFiles('refs/anchorhead/anchor.z8');

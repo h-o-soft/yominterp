@@ -1049,6 +1049,50 @@ function applyLayoutMode(): void {
   document.body.classList.toggle('modern', !settings.classicMode);
 }
 
+/**
+ * クラシック端末のフォント実測校正。
+ * コンテナ幅を ch 単位 (= ASCII フォントの「0」advance) で決めると、CJK 全角が
+ * 半角 2 桁ぶんにならないフォント環境 (mac: SF Mono 0.602em + ヒラギノ 1em) では
+ * 全角 40 文字 = 600px < 80ch ≈ 722px となり、右に死に余白ができる。
+ * 1) 実 DOM で半角/全角の advance を実測し、全角 ≠ 半角×2 なら ASCII フォントを
+ *    size-adjust で「半角 = 全角の 1/2」に校正する (ja の字面は変えない。
+ *    wrapToLines の前提「全角=2桁」を実描画でも成立させる)。
+ * 2) 校正後の実測 80 桁幅を --term-width に設定し、コンテナ幅と折返し幅を一致させる。
+ * size-adjust 未対応環境では family が素通りし、従来 (実測 80 桁幅 = 80ch 相当) に
+ * フォールバックする — どちらでも「コンテナ幅 = 実測 80 桁」は保たれる。
+ */
+function calibrateClassicMetrics(): void {
+  const probe = (text: string): number => {
+    const el = document.createElement('span');
+    el.style.cssText = 'position: absolute; visibility: hidden; white-space: pre;';
+    el.textContent = text;
+    terminal.appendChild(el);
+    const w = el.getBoundingClientRect().width;
+    el.remove();
+    return w;
+  };
+  let half = probe('0'.repeat(80)) / 80;
+  const full = probe('あ'.repeat(40)) / 40;
+  if (half <= 0 || full <= 0) return; // 計測不能 (非表示等) なら既定の 80ch のまま
+  if (Math.abs(full - 2 * half) > full * 0.01 && document.getElementById('yomi-term-ascii') === null) {
+    const adjust = ((full / 2 / half) * 100).toFixed(3);
+    const style = document.createElement('style');
+    style.id = 'yomi-term-ascii';
+    style.textContent =
+      `@font-face { font-family: 'yomi-term-ascii'; ` +
+      `src: local('SF Mono'), local('Menlo'), local('Consolas'), local('Courier New'); ` +
+      `size-adjust: ${adjust}%; }`;
+    document.head.appendChild(style);
+    document.body.classList.add('font-calibrated'); // CSS が terminal の family を切替
+    const adjusted = probe('0'.repeat(80)) / 80; // 未対応環境では元の値が返る
+    if (adjusted > 0) half = adjusted;
+  }
+  // コンテナ幅 = 校正後の実測 80 桁幅。グリフ advance の量子化で半角 80 桁と
+  // 全角 40 文字に数 px の残差が出るため、大きい方に合わせて収まりを保証する
+  const width = Math.max(half * 80, full * 40);
+  document.documentElement.style.setProperty('--term-width', `${width.toFixed(2)}px`);
+}
+
 function wireTopbar(): void {
   const layoutButton = $('btn-layout');
   applyLayoutMode();
@@ -1126,6 +1170,9 @@ function showWelcome(): void {
 wireSettings();
 wireTopbar();
 applyUiLanguage();
+calibrateClassicMetrics();
+// フォント遅延ロードで advance が変わる環境に備え、確定後にもう一度校正する
+void document.fonts?.ready.then(() => calibrateClassicMetrics());
 showWelcome();
 
 /**
