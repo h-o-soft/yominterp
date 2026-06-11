@@ -1,0 +1,105 @@
+# yominterp デスクトップ版リリース (署名なし)
+#
+# トリガ: `v*` タグの push (例: git tag v0.1.0 && git push origin v0.1.0)。
+# tauri-action が OS 別にビルドし、GitHub Release (draft) にバイナリを添付する。
+# draft のままなら外部には公開されない — publish は最終確認後に手動で行う。
+#   - macOS: .dmg / .app (Apple Silicon のみ。Intel mac は OS サポート終了が近く対象外)
+#   - Windows: .msi / setup.exe (NSIS)
+#   - Linux(任意): .AppImage / .deb — 配布する場合は matrix のコメントを外す
+#
+# ⚠ 署名・notarization なし: 配布物は未署名。macOS は Gatekeeper、Windows は
+#   SmartScreen の警告が出る (回避手順は releaseBody と README に記載)。
+#   将来 Apple Developer ID / Windows コード署名証明書を入れる場合は env に
+#   署名シークレットを追加する。
+
+name: Release (desktop, unsigned)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    permissions:
+      contents: write # Release 作成・アセット添付に必要
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest # Apple Silicon
+            args: '--target aarch64-apple-darwin'
+          - platform: windows-latest
+            args: ''
+          # Linux も配布する場合はコメントを外す
+          # - platform: ubuntu-22.04
+          #   args: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # contents:write ジョブの書き込みトークンを git 認証情報として残さない
+          # (npm ci のライフサイクルスクリプト等、後続処理からの push を防ぐ)
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      # タグの無検証リリースを防ぐガード: タグがアプリの version と一致し
+      # (rc サフィックス許容: v0.1.0-rc.1 ⊃ 0.1.0)、main 上のコミットであること
+      - name: Verify tag matches app version and sits on main
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          case "$TAG" in
+            "$VER"|"$VER"-*) echo "tag v$TAG matches app version $VER" ;;
+            *) echo "::error::tag v$TAG does not match tauri.conf.json version $VER"; exit 1 ;;
+          esac
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor HEAD origin/main \
+            || { echo "::error::tagged commit is not on main"; exit 1; }
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ contains(matrix.platform, 'macos') && 'aarch64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Build & release (tauri-action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # beforeBuildCommand (npm run build:web) は tauri.conf.json に定義済み
+          tagName: ${{ github.ref_name }}
+          releaseName: 'yominterp ${{ github.ref_name }}'
+          releaseBody: |
+            英語のインタラクティブフィクションを日本語で遊ぶプレイヤー yominterp のデスクトップ版です。
+
+            ⚠ **このビルドは署名されていません。** 初回起動時に OS の警告が出ます:
+            - **macOS**: アプリを**右クリック → 開く**。それでも開けない場合は
+              **システム設定 → プライバシーとセキュリティ** の下部に表示される**「このまま開く」**を選んでください (Apple 公式の未署名アプリの開き方)。
+            - **Windows**: SmartScreen の画面で**「詳細情報」→「実行」**を選んでください。
+
+            遊び方・LLM の設定は [README](https://github.com/h-o-soft/yominterp#readme) を参照してください。
+            ゲームファイルは同梱されていません。お手持ちの作品をご用意ください。
+          releaseDraft: true
+          # サフィックス付きタグ (v0.1.0-rc.1 等) は prerelease として作成する
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          args: ${{ matrix.args }}
