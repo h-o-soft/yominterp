@@ -1066,7 +1066,10 @@ function showWelcome(): void {
   const hint = document.createElement('p');
   hint.className = 'hint';
   hint.textContent = tr('welcomeHint');
-  wrap.append(logo, subtitle, hint);
+  const rawHint = document.createElement('p');
+  rawHint.className = 'hint';
+  rawHint.textContent = tr('rawCommandHint');
+  wrap.append(logo, subtitle, hint, rawHint);
   terminal.appendChild(wrap);
 }
 

@@ -30,6 +30,7 @@ export type MessageKey =
   | 'noSuchChoice'
   | 'welcomeSubtitle'
   | 'welcomeHint'
+  | 'rawCommandHint'
   | 'menuOpen'
   | 'menuRaw'
   | 'menuLayout'
@@ -106,6 +107,7 @@ const ja: Catalog = {
   abortedRest: '(途中で失敗したため残りの動作は中止しました)',
   noSuchChoice: 'その選択肢はありません ({keys})',
   welcomeSubtitle: '英語のインタラクティブフィクションを日本語で遊ぶ',
+  rawCommandHint: '英語のコマンドは行頭に > を付けると、翻訳せず直接入力できます。',
   welcomeHint: '右上の ☰ メニュー →「開く」でゲームを読み込み、「設定」で LLM 接続先を指定してください',
   menuOpen: '📂 開く…',
   menuRaw: '原文の表示',
@@ -184,6 +186,7 @@ const fr: Catalog = {
   abortedRest: '(échec en cours de route : les actions restantes ont été annulées)',
   noSuchChoice: "Ce choix n'existe pas ({keys})",
   welcomeSubtitle: 'Jouez à la fiction interactive anglaise dans votre langue',
+  rawCommandHint: 'Une commande anglaise peut être envoyée telle quelle en la faisant précéder de >.',
   welcomeHint:
     'Menu ☰ en haut à droite → « Ouvrir » pour charger une partie, « Réglages » pour le LLM',
   menuOpen: '📂 Ouvrir…',
@@ -264,6 +267,7 @@ const es: Catalog = {
   abortedRest: '(fallo a mitad: se cancelaron las acciones restantes)',
   noSuchChoice: 'Esa opción no existe ({keys})',
   welcomeSubtitle: 'Juega a la ficción interactiva en inglés en tu idioma',
+  rawCommandHint: 'Puedes enviar un comando en inglés tal cual anteponiendo >.',
   welcomeHint:
     'Menú ☰ arriba a la derecha → «Abrir» para cargar una partida, «Ajustes» para el LLM',
   menuOpen: '📂 Abrir…',
@@ -344,6 +348,7 @@ const de: Catalog = {
   abortedRest: '(Fehler unterwegs: restliche Aktionen abgebrochen)',
   noSuchChoice: 'Diese Auswahl gibt es nicht ({keys})',
   welcomeSubtitle: 'Spiele englische Interactive Fiction in deiner Sprache',
+  rawCommandHint: 'Englische Befehle lassen sich mit vorangestelltem > direkt eingeben.',
   welcomeHint:
     'Menü ☰ oben rechts → „Öffnen" zum Laden eines Spiels, „Einstellungen" für das LLM',
   menuOpen: '📂 Öffnen…',
@@ -424,6 +429,7 @@ const ptBR: Catalog = {
   abortedRest: '(falha no meio: as ações restantes foram canceladas)',
   noSuchChoice: 'Essa opção não existe ({keys})',
   welcomeSubtitle: 'Jogue ficção interativa em inglês no seu idioma',
+  rawCommandHint: 'Comandos em inglês podem ser enviados direto com > no início.',
   welcomeHint:
     'Menu ☰ no canto superior direito → "Abrir" para carregar um jogo, "Configurações" para o LLM',
   menuOpen: '📂 Abrir…',
