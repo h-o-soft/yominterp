@@ -5,10 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- CSP: 外部スクリプト禁止。connect-src はユーザー設定の LLM endpoint へ接続するため http/https を許可
          (https ページからの http://127.0.0.1 ローカル LLM 接続は loopback 例外で可能だが、
-          connect-src * はスキーム違いの http: を含まないため明示する) -->
+          connect-src * はスキーム違いの http: を含まないため明示する)。
+         connect-src の 'self' は必須: Tauri では同一オリジンが tauri://localhost で、
+         https:/http: に含まれず、emglken WASM の fetch が遮断されて
+         「起動エラー: TypeError: Load failed」になる (実害発生・再発防止) -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https: http:; object-src 'none'; base-uri 'none'"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https: http:; object-src 'none'; base-uri 'none'"
     />
     <title data-i18n="docTitle">yominterp — 英語IFを日本語で遊ぶ</title>
     <!-- 同梱フォント (PlemolJP HS) の先読み — クラシック端末の桁計算を担う本命フォント。
