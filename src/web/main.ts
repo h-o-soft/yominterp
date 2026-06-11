@@ -464,22 +464,6 @@ async function printBodyParagraphs(
       continue;
     }
     const plain = block.lines.map((l) => l.spans.map((s) => s.text).join('')).join('\n');
-    // 中央寄せ等の固定アスキーレイアウト行 (冒頭タイトル/クレジット: ゲームが
-    // 行頭の空白で桁を合わせて中央に配置したもの) は、翻訳すると桁がずれて崩れる。
-    // 翻訳せず原文の桁位置をそのまま保持して表示する (クラシックは pre で再現)。
-    // 判定: いずれかの行が先頭に 4 個以上の空白を持つ (通常の本文段落は先頭が
-    // 詰まっており該当しない)。
-    if (block.lines.some((l) => /^ {4,}\S/.test(l.spans.map((s) => s.text).join('')))) {
-      const rawText = block.lines
-        .map((l) => l.spans.map((s) => s.text).join('').replace(/\s+$/, ''))
-        .join('\n');
-      const style = uniformStyle(block.lines) ?? fallbackStyle;
-      if (usePager) await pager.beforeAppend(pendingBlanks + estimateLines(rawText, CLASSIC_COLS));
-      emitBlanks();
-      printStyledPara(rawText, style);
-      shown += rawText;
-      continue;
-    }
     const ja = await translateOut(plain);
     const style = uniformStyle(block.lines) ?? fallbackStyle;
     const chunks = usePager ? splitForPaging(ja, CLASSIC_COLS, classicPageLines()) : [ja];
