@@ -176,7 +176,8 @@ function waitForKey(label: string): Promise<string> {
 }
 
 /**
- * クラシックの 1 ページ表示行数 = 実表示枠の行数 − 1 ([More] バー分)。
+ * クラシックの 1 ページ表示行数 = 実表示枠の行数 − 1 ([More]/キー待ちバー分。
+ * バーはクラシック CSS で正確に 1 行高に揃えてある)。
  * 枠は定義上 24 行だが、ウィンドウが小さく枠が縮む場合はその実行数で計算する
  * (実表示領域に基づくページ送り。あふれを防ぐ)。
  */
@@ -189,12 +190,41 @@ function classicPageLines(): number {
   return Math.max(6, Math.min(CLASSIC_ROWS, rows) - 1);
 }
 
-const pager = new Pager(async () => {
-  await waitForContinue(tr('moreBar'));
-  // 古典端末のページ動作: [More] で続けるとき画面をクリアして次ページを上から
-  // 表示する (枠 24 行を厳守し、前ページが残って枠を超えるのを防ぐ)。
-  terminal.innerHTML = '';
-}, classicPageLines);
+/**
+ * ページ使用行数の実描画計測 (PageMeasure 実装)。
+ * 端末内コンテンツ末尾の Y 座標 (コンテンツ原点基準) を実測し、ページ開始位置
+ * からの差分 ÷ 行高 = 使用行数とする。推定カウンタと違い、[More] バー・
+ * 「> コマンド」echo・quote box・grid 置換 (DOM からの削除) など表示に乗る/消える
+ * 全要素が自動的に反映される — 「計算 = 実描画」のズレが構造的に起きない。
+ */
+function contentBottomPx(): number {
+  const last = terminal.lastElementChild;
+  if (last === null) return 0;
+  const contentTop =
+    terminal.getBoundingClientRect().top +
+    (parseFloat(getComputedStyle(terminal).paddingTop) || 0);
+  return last.getBoundingClientRect().bottom - contentTop + terminal.scrollTop;
+}
+let pageStartPx = 0;
+
+const pager = new Pager(
+  async () => {
+    await waitForContinue(tr('moreBar'));
+    // 古典端末のページ動作: [More] で続けるとき画面をクリアして次ページを上から
+    // 表示する (枠 24 行を厳守し、前ページが残って枠を超えるのを防ぐ)。
+    terminal.innerHTML = '';
+  },
+  classicPageLines,
+  {
+    markPageStart(): void {
+      pageStartPx = contentBottomPx();
+    },
+    usedLines(): number {
+      const lh = parseFloat(getComputedStyle(terminal).lineHeight) || 24;
+      return Math.max(0, Math.round((contentBottomPx() - pageStartPx) / lh));
+    },
+  },
+);
 
 /**
  * ゲーム本文の表示前ゲート。[More] ページ送りはクラシック専用
@@ -218,6 +248,7 @@ function honorClear(): void {
 }
 
 function setBusy(busy: boolean): void {
+  if (busy) lastTranslateError = undefined; // 新しい操作 → 翻訳エラーは再表示してよい
   input.disabled = busy;
   sendButton.disabled = busy;
   if (!busy) input.focus();
@@ -354,29 +385,36 @@ function applyBackgroundFrom(out: { rich?: StyledBlock[]; statusStyle?: SpanStyl
   applyGameBackground(bg);
 }
 
+/** 直近に表示した翻訳エラー文言 (同一エラーの連打抑止用。新しい操作でリセット) */
+let lastTranslateError: string | undefined;
+
 async function translateOut(body: string): Promise<string> {
   if (exitTr === undefined || body.trim() === '') return body;
   try {
     return await exitTr.translate(body);
   } catch (err) {
-    print('system', tr('translateError', { err: String(err) }));
+    // 段落ごとに翻訳するため、LLM 不通時は同一エラーが段落数だけ連打されて
+    // 画面を埋め、ページ送りまで歪める。同一文言は 1 操作 1 回だけ表示する
+    const msg = tr('translateError', { err: String(err) });
+    if (msg !== lastTranslateError) {
+      lastTranslateError = msg;
+      print('system', msg);
+    }
     return body;
   }
 }
 
-async function renderGameText(body: string, statusLineRaw?: string, paged = true): Promise<string> {
+async function renderGameText(body: string, statusLineRaw?: string): Promise<string> {
   showStatus(statusLineRaw);
   if (body.trim() === '') return '';
   const ja = await translateOut(body);
-  // クラシックは常に 80 桁で wrap する。ページ送り ([More]) だけ paged で制御
-  // (char 画面など paged=false でも 80 桁 wrap は維持し、横はみ出しを防ぐ)。
-  const chunks = settings.classicMode
-    ? paged
-      ? splitForPaging(ja, CLASSIC_COLS, classicPageLines())
-      : [wrapToLines(ja, CLASSIC_COLS).join('\n')]
-    : [ja];
+  // クラシックは常に 80 桁で wrap (wrapToLines 経由の splitForPaging) し、
+  // [More] ページ送りも常に通す。char 画面 (keypress 待ち) も例外にしない —
+  // anchorhead 冒頭プロローグ (34 表示行) のような長い char 画面が
+  // ページャをバイパスして縦に溢れ、冒頭がスクロールアウトしていたため。
+  const chunks = settings.classicMode ? splitForPaging(ja, CLASSIC_COLS, classicPageLines()) : [ja];
   for (const chunk of chunks) {
-    if (settings.classicMode && paged) await pageGate(chunk);
+    await pageGate(chunk);
     print('', chunk);
   }
   if (settings.showRaw && ja !== body) print('raw', body);
@@ -388,16 +426,13 @@ async function renderGameText(body: string, statusLineRaw?: string, paged = true
  * 段落一様装飾を訳文に対応付けて描画する。rich が無いエンジンは従来描画。
  * 戻り値は表示した訳文 (メニュー検出やセッション履歴は従来どおり body を使う)。
  */
-async function renderRichOutput(
-  out: {
-    body: string;
-    statusLine?: string;
-    statusStyle?: SpanStyle;
-    rich?: StyledBlock[];
-    cleared?: boolean;
-  },
-  paged = true,
-): Promise<string> {
+async function renderRichOutput(out: {
+  body: string;
+  statusLine?: string;
+  statusStyle?: SpanStyle;
+  rich?: StyledBlock[];
+  cleared?: boolean;
+}): Promise<string> {
   // ゲームの画面クリア要求を honor (クラシック=実クリア / モダン=区切り線)
   if (out.cleared === true) {
     honorClear();
@@ -412,7 +447,7 @@ async function renderRichOutput(
   applyBackgroundFrom(out); // ゲーム背景色を端末全体に統一
   showStatus(out.statusLine, out.statusStyle);
   if (out.rich === undefined) {
-    return renderGameText(out.body, undefined, paged);
+    return renderGameText(out.body);
   }
   const grid = out.rich.find((b) => b.kind === 'grid');
   const para = out.rich.find((b) => b.kind === 'para');
@@ -421,7 +456,7 @@ async function renderRichOutput(
     const plain = gridPlainText(grid);
     if (plain !== '') {
       const ja = await translateOut(plain);
-      if (paged) await pageGate(ja);
+      await pageGate(ja);
       printGridBox(ja, uniformStyle(grid.lines));
       shown += ja;
     }
@@ -429,11 +464,11 @@ async function renderRichOutput(
   if (para !== undefined && para.lines.some((l) => l.spans.map((s) => s.text).join('').trim() !== '')) {
     // grid (quote box) の後に本文が続くなら間に空き 1 行
     if (shown !== '') {
-      if (paged) await pageGate('');
+      await pageGate('');
       print('', '');
     }
     // 段落別装飾が取れない段落も、本文全体の既定装飾 (ghosts は黒背景/白文字) を当てる
-    shown += await printBodyParagraphs(para.lines, uniformStyle(para.lines), paged);
+    shown += await printBodyParagraphs(para.lines, uniformStyle(para.lines));
   }
   if (settings.showRaw && out.rich.length > 0) printRawRich(out.rich);
   return shown;
@@ -449,10 +484,9 @@ async function renderRichOutput(
 async function printBodyParagraphs(
   lines: StyledLine[],
   fallbackStyle?: SpanStyle,
-  paged = true,
 ): Promise<string> {
   let shown = '';
-  const usePager = settings.classicMode && paged;
+  const usePager = settings.classicMode;
   // 空行は即出力せず保留する。[More] のページクリアでページ境界の空行が
   // 消えないよう、保留空行は「次の段落とセット」で改ページ判定し、改ページ後の
   // 先頭に繰り越して出す (タイトル前の空行などが境界で失われないように)。
@@ -472,12 +506,10 @@ async function printBodyParagraphs(
     const plain = block.lines.map((l) => l.spans.map((s) => s.text).join('')).join('\n');
     const ja = await translateOut(plain);
     const style = uniformStyle(block.lines) ?? fallbackStyle;
-    // クラシックは常に 80 桁 wrap。ページ送りだけ usePager(=classic&&paged)で制御し、
-    // paged=false (char 画面等) でも wrap を維持して横はみ出しを防ぐ。
+    // クラシックは常に 80 桁 wrap (splitForPaging が wrapToLines で物理行を確定)。
+    // char 画面 (keypress 待ち) もページ送りの例外にしない (縦溢れの根本対策)。
     const chunks = settings.classicMode
-      ? usePager
-        ? splitForPaging(ja, CLASSIC_COLS, classicPageLines())
-        : [wrapToLines(ja, CLASSIC_COLS).join('\n')]
+      ? splitForPaging(ja, CLASSIC_COLS, classicPageLines())
       : [ja];
     // 保留空行 + 段落先頭をまとめて改ページ判定 (空行が境界でちぎれて消えない)
     if (usePager) await pager.beforeAppend(pendingBlanks + estimateLines(chunks[0]!, CLASSIC_COLS));
@@ -657,7 +689,13 @@ async function resolveKeypresses(out: EngineOutput): Promise<EngineOutput> {
     detectMenu(cur.body) === undefined &&
     !REAL_QUESTION_RE.test(cur.body.trimEnd())
   ) {
-    await renderRichOutput(cur, false); // char メニュー画面は1画面更新 — [More] を挟まない
+    // char 画面もページングする (長いプロローグ/カットシーンの縦溢れ防止 —
+    // anchorhead 冒頭で冒頭行がスクロールアウトしていた主因)。途中の [More] は
+    // ローカルで消費され、VM へ送るのは最後の waitForKey で押されたキーだけ。
+    // HELP 等の 1 画面メニューはページ高に収まるので [More] は発火しない
+    // (実描画計測により grid 置換・画面クリアが正しく反映されるため、かつての
+    //  「HELP に [More] が混入する」累積カウンタのバグは構造的に再発しない)。
+    await renderRichOutput(cur);
     // 押されたキーをそのまま VM へ (引用画面は任意キーで進み、HELP メニューは Q/N/P 等で操作)
     const key = await waitForKey(tr('keyWaitBar'));
     cur = await engine.send(key);

@@ -232,34 +232,58 @@ export function estimateLines(text: string, cols = CLASSIC_COLS): number {
   return wrapToLines(text, cols).length;
 }
 
-/** ページャ状態。waitFn (続行操作待ち) を注入してテスト可能にする */
+/**
+ * ページの使用行数を「実描画」から計測するフック。
+ * 加算カウンタは [More] バー・コマンド echo 行・quote box の余白・grid 置換
+ * (前ターンの gridbox 削除) を取りこぼして実画面と乖離する — 計測なら DOM に
+ * あるものが全てなので、「計算した行数 = 実際の表示行数」が構造的に保たれる。
+ */
+export interface PageMeasure {
+  /** ページ開始位置を記録する (reset / [More] のページクリア直後) */
+  markPageStart(): void;
+  /** ページ開始位置からの実使用行数 (実 DOM の高さ ÷ 行高) */
+  usedLines(): number;
+}
+
+/** ページャ状態。waitFn (続行操作待ち) と実測フックを注入してテスト可能にする */
 export class Pager {
-  private linesShown = 0;
+  /** 実測フックが無い環境 (単体テスト等) 用のフォールバックカウンタ */
+  private counted = 0;
   constructor(
     private readonly waitFn: () => Promise<void>,
     private readonly pageLines: number | (() => number) = CLASSIC_ROWS,
+    private readonly measure?: PageMeasure,
   ) {}
 
   private limit(): number {
     return typeof this.pageLines === 'function' ? this.pageLines() : this.pageLines;
   }
 
+  private used(): number {
+    return this.measure !== undefined ? this.measure.usedLines() : this.counted;
+  }
+
   /** ターン開始等でページ位置をリセット */
   reset(): void {
-    this.linesShown = 0;
+    this.counted = 0;
+    this.measure?.markPageStart();
   }
 
   /**
    * ブロックを表示する直前に呼ぶ。
    * 「このブロックを足すと表示領域を超える」手前で続行操作を待つ
    * (先読み — あふれてから止めるのではなく、超える前に止める)。
+   * 使用行数は実測 (PageMeasure) を優先する — 推定カウンタは表示に乗る
+   * 全要素を数え切れず、ズレが溢れ/早すぎる [More] になるため。
    */
   async beforeAppend(estimatedLines: number): Promise<void> {
-    if (this.linesShown > 0 && this.linesShown + estimatedLines > this.limit()) {
+    const used = this.used();
+    if (used > 0 && used + estimatedLines > this.limit()) {
       await this.waitFn();
-      this.linesShown = 0;
+      this.counted = 0;
+      this.measure?.markPageStart();
     }
-    this.linesShown += estimatedLines;
+    this.counted += estimatedLines;
   }
 }
 

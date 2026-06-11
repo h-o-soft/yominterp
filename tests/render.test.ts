@@ -156,6 +156,61 @@ describe('wrapLine / estimateLines (折返しカウント)', () => {
     await pager.beforeAppend(25);
     expect(waits).toBe(0);
   });
+
+  it('Pager: 実測フック (PageMeasure) があれば推定カウンタでなく実測行数で判定する', async () => {
+    const { Pager } = await import('../src/web/ui/render.js');
+    // 実 DOM の使用行数をシミュレート: バー・echo 行など「カウンタに乗らない行」を
+    // 含む実測値が判定に使われることを確認する (推定と実描画のドリフトの根本対策)
+    let domLines = 0;
+    let pageStart = 0;
+    let waits = 0;
+    const pager = new Pager(
+      async () => {
+        waits++;
+        domLines = 0; // [More] のページクリア
+      },
+      10,
+      {
+        markPageStart: () => void (pageStart = domLines),
+        usedLines: () => domLines - pageStart,
+      },
+    );
+    // echo 行 2 行が「beforeAppend を通らず」DOM に直接乗った (推定カウンタは知らない)
+    domLines += 2;
+    await pager.beforeAppend(7); // 実測 2 + 7 = 9 ≤ 10 → 待たない
+    domLines += 7;
+    expect(waits).toBe(0);
+    await pager.beforeAppend(2); // 実測 9 + 2 = 11 > 10 → 待つ (カウンタなら 9 で素通りしていた)
+    domLines += 2;
+    expect(waits).toBe(1);
+  });
+
+  it('Pager: grid 置換等で実 DOM が減ったら実測に従い [More] を出さない (HELP 混入の根治)', async () => {
+    const { Pager } = await import('../src/web/ui/render.js');
+    let domLines = 0;
+    let pageStart = 0;
+    let waits = 0;
+    const pager = new Pager(
+      async () => {
+        waits++;
+        domLines = 0;
+      },
+      10,
+      {
+        markPageStart: () => void (pageStart = domLines),
+        usedLines: () => domLines - pageStart,
+      },
+    );
+    // grid メニュー 7 行の表示 → 置換を繰り返す。実際の描画順 (renderRichOutput) は
+    // 「旧 gridbox を DOM から削除 → pageGate → 新 grid を表示」なので、ゲート時点の
+    // 実測は置換後の行数になる — 実測は累積しない
+    for (let i = 0; i < 5; i++) {
+      domLines -= domLines; // 置換: 前の grid は描画前に DOM から消える
+      await pager.beforeAppend(7);
+      domLines += 7; // 新しい grid 7 行
+    }
+    expect(waits).toBe(0); // 加算カウンタだと 35 行扱いで [More] が混入していた
+  });
 });
 
 describe('splitForPaging (長段落のページ分割・wrap 込み)', () => {
@@ -200,7 +255,7 @@ describe('キー待ち/クリアのモード非依存契約', () => {
   });
   it('keypress 待ち (resolveKeypresses) は classicMode 条件なしで waitForContinue を呼ぶ', () => {
     // 冒頭引用画面・HELP 等の keypress 待ちは共通の resolveKeypresses が処理する。
-    const fn = main.slice(main.indexOf('function resolveKeypresses'), main.indexOf('function resolveKeypresses') + 700);
+    const fn = main.slice(main.indexOf('function resolveKeypresses'), main.indexOf('function resolveKeypresses') + 1600);
     expect(fn).toContain("waitForKey(tr('keyWaitBar'))");
     expect(fn).not.toMatch(/if \(settings\.classicMode\)\s*\{\s*await waitForKey/);
     // char 入力要求のときに、押されたキーをそのまま VM へ送る (HELP の Q 等)
@@ -234,18 +289,30 @@ describe('splitBlocks (改行・空行の完全保持)', () => {
   });
 });
 
-describe('クラシックは paged=false でも wrap する契約 (char 画面の横はみ出し防止)', () => {
-  // anchorhead 冒頭の prologue が keypress 待ち(char query)経由で paged=false になり、
-  // splitForPaging ごとスキップされて 80桁 wrap が当たらず横はみ出していた回帰の防止。
-  // ページ送り([More])だけ paged で制御し、wrap はクラシックで常に行う。
+describe('クラシックは char 画面も含め常に wrap + ページングする契約 (縦横の溢れ防止)', () => {
+  // anchorhead 冒頭の prologue (34 表示行の char query 画面) が paged=false で
+  // ページャをバイパスし、縦に溢れて冒頭がスクロールアウトしていた回帰の防止。
+  // クラシックの本文描画は常に splitForPaging (wrapToLines で物理行確定) + pageGate。
   const main = readFileSync('src/web/main.ts', 'utf8');
-  it('renderGameText は classic なら paged に依らず wrap する', () => {
-    const fn = main.slice(main.indexOf('async function renderGameText'), main.indexOf('async function renderGameText') + 800);
-    expect(fn).toContain('wrapToLines(ja, CLASSIC_COLS)'); // paged=false 時も wrap
-    expect(fn).toContain('settings.classicMode');
+  it('renderGameText は classic で常に splitForPaging + ページゲートを通す', () => {
+    const fn = main.slice(main.indexOf('async function renderGameText'), main.indexOf('async function renderGameText') + 900);
+    expect(fn).toContain('splitForPaging(ja, CLASSIC_COLS'); // 物理行確定 + ページ分割
+    expect(fn).toContain('await pageGate(chunk)');
+    expect(fn).not.toContain('paged'); // char 画面を例外にするフラグは廃止
   });
-  it('printBodyParagraphs も classic なら paged に依らず wrap する', () => {
-    const fn = main.slice(main.indexOf('async function printBodyParagraphs'), main.indexOf('async function printBodyParagraphs') + 1200);
-    expect(fn).toContain('wrapToLines(ja, CLASSIC_COLS)');
+  it('printBodyParagraphs も classic で常に splitForPaging する', () => {
+    const fn = main.slice(main.indexOf('async function printBodyParagraphs'), main.indexOf('async function printBodyParagraphs') + 1600);
+    expect(fn).toContain('splitForPaging(ja, CLASSIC_COLS');
+    expect(fn).not.toContain('paged = '); // ページング例外フラグなし
+  });
+  it('resolveKeypresses (char 画面) もページングされた描画を使う', () => {
+    const fn = main.slice(main.indexOf('async function resolveKeypresses'), main.indexOf('async function resolveKeypresses') + 1400);
+    expect(fn).toContain('renderRichOutput(cur)');
+    expect(fn).not.toContain('renderRichOutput(cur, false)');
+  });
+  it('ページャは実描画計測 (PageMeasure) を注入して生成される', () => {
+    expect(main).toContain('markPageStart');
+    expect(main).toContain('usedLines');
+    expect(main).toContain('contentBottomPx');
   });
 });

@@ -154,16 +154,45 @@ body.classic #terminal {
 }
 /* クラシックの本文段落は折り返さない (wrapToLines が表示行を確定済み)。
    段落マージンは 0 — 段落間の空きは出力側が空行 (1 表示行) で入れ、ページ送りの
-   行数計算と実表示を一致させる (margin が行数計算からズレる原因だった) */
-body.classic #terminal p { white-space: pre; margin: 0; }
+   行数計算と実表示を一致させる (margin が行数計算からズレる原因だった)。
+   line-height は font-size に依らず 1 行 = 行格子 1 マスに固定する
+   (cmd/raw は 0.85rem なので比率指定だと行高が縮み、ページ行数計算とズレる) */
+body.classic #terminal p {
+  white-space: pre;
+  margin: 0;
+  line-height: calc(var(--term-lh) * var(--term-font));
+}
 /* 原文ビューの本文段落はクラシックでも折り返す (本文は wrapToLines 済みだが
    原文は未 wrap のため CSS で折る)。p{pre} より詳細度を上げて上書きする */
 body.classic #terminal p.raw { white-space: pre-wrap; }
+/* system 行 (エラー/案内 — wrapToLines を通らないアプリ文言) も折り返す。
+   pre のままだと長いエラーが横にはみ出し、横スクロールバーがペイン高を変えて
+   行数計算を揺らす。折返しで増えた行も実測ページャが正しく数える */
+body.classic #terminal p.system { white-space: pre-wrap; }
 /* 空行 (textContent='' の <p>) は margin:0 だと高さ 0 になり消えてしまう。
    ゲーム由来の空行を必ず 1 行ぶんの高さで見せる (これが無いとクラシックで
    段落間の空行が視覚的に脱落していた) */
-body.classic #terminal p:empty { min-height: 1.55em; }
-body.classic #terminal .gridbox { white-space: pre; margin: 0.4rem 0; }
+body.classic #terminal p:empty { min-height: calc(var(--term-lh) * var(--term-font)); }
+/* quote box もクラシックでは行格子に整列 (margin/padding を持たせない —
+   箱の前後の空きはゲーム由来の空行が作る。余白が行数計算とズレる原因だった。
+   横 padding も 0 — 80 桁の grid 行 + padding が枠幅を超えて横スクロールバーが
+   出ると、その分ペイン高が縮んで行数計算が揺れる) */
+body.classic #terminal .gridbox {
+  white-space: pre;
+  margin: 0;
+  padding: 0;
+  line-height: calc(var(--term-lh) * var(--term-font));
+}
+/* [More]/キー待ちバーも正確に 1 行高に揃える (既定スタイルは margin+padding+border
+   で約 2.3 行分あり、classicPageLines の「バー分 = 1 行」予約を超えてページ先頭を
+   押し出していた)。box-sizing: border-box なので border 込みで 1 行高 */
+body.classic #terminal .more-bar {
+  margin: 0;
+  padding: 0;
+  height: calc(var(--term-lh) * var(--term-font));
+  line-height: calc(var(--term-lh) * var(--term-font) - 2px); /* 上下 border 1px ぶん */
+  border-radius: 0;
+}
 body.classic #topbar {
   border-bottom: 1px solid #2a3a30;
 }
