@@ -1096,6 +1096,18 @@ function calibrateClassicMetrics(): void {
   document.documentElement.style.setProperty('--term-width', `${width.toFixed(2)}px`);
 }
 
+/**
+ * 縦スクロールバー溝の実幅を実測し、#app 幅へ加算する (--scrollbar-w)。
+ * scrollbar-gutter: stable が予約する溝は「常時表示スクロールバー」環境で
+ * 実幅を持ち、これを加算しないとバーが 80 桁の内側から幅を奪って右端の文字を
+ * 隠す + 横溢れで横スクロールバーが出る。overlay バー環境 (mac 既定) では 0。
+ */
+function measureScrollbarGutter(): void {
+  // offsetWidth − clientWidth = 左右 border (なし) + スクロールバー溝
+  const w = terminal.offsetWidth - terminal.clientWidth;
+  if (w >= 0) document.documentElement.style.setProperty('--scrollbar-w', `${w}px`);
+}
+
 function wireTopbar(): void {
   const layoutButton = $('btn-layout');
   applyLayoutMode();
@@ -1173,10 +1185,15 @@ function showWelcome(): void {
 wireSettings();
 wireTopbar();
 applyUiLanguage();
+// スクロールバー溝はフォント非依存なので起動直後に実測する
+measureScrollbarGutter();
 // 校正は同梱フォント (PlemolJP HS) の読込完了後に行う。読込前に測ると
 // フォールバックフォントの計測で size-adjust を誤発動し、同梱フォントが
 // 当たらなくなる (読込までは --term-width 未設定 = 80ch フォールバックで表示)
-void (document.fonts?.ready ?? Promise.resolve()).then(() => calibrateClassicMetrics());
+void (document.fonts?.ready ?? Promise.resolve()).then(() => {
+  calibrateClassicMetrics();
+  measureScrollbarGutter();
+});
 showWelcome();
 
 /**

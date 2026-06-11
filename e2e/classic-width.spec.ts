@@ -85,6 +85,51 @@ test('同梱フォント PlemolJP HS が読み込まれ、半角:全角=1:2 が�
   expect(Math.abs(r.ideographicSpace40 - r.cjk40)).toBeLessThanOrEqual(1);
 });
 
+test('クラシック: 縦スクロールバーが本文を隠さず、横スクロールバーは出ない (実描画)', async ({
+  page,
+}) => {
+  // 常時表示スクロールバー環境で、縦バーが 80 桁の内側から幅を奪って右端の文字を
+  // 隠し、押し出された本文が横スクロールバーを出していた回帰の防止。
+  // ::-webkit-scrollbar 指定によりバーは常にクラシック型 (幅 10px) なので、
+  // この検証は環境のバー設定に依らず決定的に再現する。
+  await page.goto('/');
+  await page.getByRole('button', { name: '閉じる' }).click();
+  await page.evaluate(() => document.fonts.ready);
+  const r = await page.evaluate(() => {
+    const t = document.getElementById('terminal')!;
+    t.classList.remove('welcoming');
+    t.innerHTML = '';
+    // 80 桁の行 × 60 = 縦スクロールが発生する量
+    for (let i = 0; i < 60; i++) {
+      const p = document.createElement('p');
+      p.textContent = '0123456789'.repeat(8);
+      t.appendChild(p);
+    }
+    const cs = getComputedStyle(t);
+    const range = document.createRange();
+    range.selectNodeContents(t.querySelector('p')!);
+    const res = {
+      overflowX: cs.overflowX,
+      scrollbarGutter: cs.scrollbarGutter,
+      gutterPx: t.offsetWidth - t.clientWidth,
+      vScrollable: t.scrollHeight > t.clientHeight + 1,
+      hOverflow: t.scrollWidth > t.clientWidth + 1,
+      // 本文 (80 桁行のグリフ右端) が client 領域 (= バー/溝の左側) に収まる
+      textRight: range.getBoundingClientRect().right,
+      clientRight: t.getBoundingClientRect().left + t.clientLeft + t.clientWidth,
+    };
+    t.innerHTML = '';
+    return res;
+  });
+  expect(r.overflowX).toBe('hidden'); // 横スクロールバーは構造的に出ない
+  expect(r.scrollbarGutter).toContain('stable');
+  expect(r.gutterPx).toBeGreaterThanOrEqual(10); // 自前テーマのクラシック型バー (溝あり)
+  expect(r.vScrollable).toBe(true); // 縦スクロール状態での検証
+  expect(r.hOverflow).toBe(false); // 横溢れなし
+  // 右端の文字がスクロールバーに隠れない (バーは client 領域の外)
+  expect(r.textRight).toBeLessThanOrEqual(r.clientRight + 0.5);
+});
+
 test('クラシック: 全角40文字の行が横にはみ出さない (実描画)', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '閉じる' }).click();

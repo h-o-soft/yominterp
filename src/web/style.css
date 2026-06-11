@@ -74,7 +74,26 @@ body {
 #topbar-menu button:hover { background: var(--status-bg); }
 #topbar-menu button.active { color: var(--accent); }
 
-#terminal { flex: 1; overflow-y: auto; padding: 1rem 0.8rem; line-height: 1.6; }
+/* overflow-x: hidden — 横スクロールバーは常に出さない (本文は 80 桁で折返し済み)。
+   scrollbar-gutter: stable — 縦バーを padding の外側の溝に置き、本文 80 桁に
+   絶対に重ねない (常時表示スクロールバー環境では溝の実幅を --scrollbar-w として
+   実測し #app 幅へ加算する。overlay バー環境では溝 0 = バーは右 padding 上)。 */
+#terminal {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding: 1rem 0.8rem;
+  line-height: 1.6;
+}
+/* 端末の縦スクロールバーを自前テーマ化。::-webkit-scrollbar を指定すると常に
+   クラシック型 (レイアウト幅を持つ) になり、OS の「常時表示/オーバーレイ」設定に
+   依らず同じ見た目・同じ実測幅 (--scrollbar-w) になる。白い太バーが暗色画面で
+   浮く問題も解消 */
+#terminal::-webkit-scrollbar { width: 10px; }
+#terminal::-webkit-scrollbar-track { background: transparent; }
+#terminal::-webkit-scrollbar-thumb { background: #2a3a30; border-radius: 5px; }
+#terminal::-webkit-scrollbar-thumb:hover { background: var(--dim); }
 #terminal p { margin: 0 0 0.7rem; white-space: pre-wrap; }
 #terminal .user { color: var(--accent); }
 #terminal .cmd { color: var(--dim); font-size: 0.85rem; }
@@ -158,11 +177,14 @@ dialog button { font: inherit; cursor: pointer; }
    ステータスは上部バー、入力欄は下部 = 枠外 (本文領域 = 24 行)。 */
 body.classic { --term-font: 15px; --term-lh: 1.55; }
 body.classic #app {
-  /* content 80 桁 + #terminal の左右 padding (0.8rem×2)。
-     幅は実測 (calibrateClassicMetrics が --term-width に実フォントの 80 桁幅を
-     設定する)。ch 単位は ASCII フォントの「0」基準で、CJK 全角が半角 2 桁に
-     ならない環境では右に死に余白ができるため使わない (未計測時のみ 80ch) */
-  max-width: calc(var(--term-width, 80ch) + 1.6rem);
+  /* content 80 桁 + #terminal の左右 padding (0.8rem×2) + 縦スクロールバー溝。
+     幅は実測 (calibrateClassicMetrics が --term-width に実フォントの 80 桁幅を、
+     measureScrollbarGutter が --scrollbar-w にバー溝の実幅を設定する)。
+     ch 単位は ASCII フォントの「0」基準で、CJK 全角が半角 2 桁にならない環境では
+     右に死に余白ができるため使わない (未計測時のみ 80ch)。バー溝を加算しないと
+     常時表示スクロールバー環境でバーが 80 桁の内側から幅を奪い、右端の文字が
+     隠れる + 押し出しで横スクロールが発生する */
+  max-width: calc(var(--term-width, 80ch) + 1.6rem + var(--scrollbar-w, 0px));
   justify-content: center;
 }
 /* 実測校正済み ASCII フォント (size-adjust で半角 advance = 全角の 1/2)。
