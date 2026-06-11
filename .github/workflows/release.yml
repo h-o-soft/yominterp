@@ -100,5 +100,6 @@ jobs:
             遊び方・LLM の設定は [README](https://github.com/h-o-soft/yominterp#readme) を参照してください。
             ゲームファイルは同梱されていません。お手持ちの作品をご用意ください。
           releaseDraft: true
-          prerelease: false
+          # サフィックス付きタグ (v0.1.0-rc.1 等) は prerelease として作成する
+          prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
