@@ -54,9 +54,21 @@ yominterp (ヨミンタープ) は、英語で書かれた Z-machine / Glulx の
 
 ## 入手と起動
 
-### デスクトップ版 (主軸・ローカル LLM におすすめ)
+### インストール (デスクトップ版・推奨)
 
-yominterp の主軸は**デスクトップ版 (Tauri)** です。**プロキシなどの設定なしで** `http://127.0.0.1` のローカル LLM に直接つながります。
+[**Releases**](https://github.com/h-o-soft/yominterp/releases) から、お使いの OS のファイルをダウンロードしてください。
+
+- **macOS (Apple Silicon)**: `.dmg` を開いてアプリを Applications へ
+- **Windows**: `.msi` または `-setup.exe` を実行
+
+> ⚠ **配布物は署名されていません**。初回起動時に OS の警告が出ます:
+> - **macOS**: 「開発元を確認できない」と出たら、アプリを**右クリック → 開く**。
+>   「壊れている」と出る場合はターミナルで `xattr -dr com.apple.quarantine /Applications/yominterp.app` を実行してから開いてください。
+> - **Windows**: SmartScreen の画面で**「詳細情報」→「実行」**を選んでください。
+
+デスクトップ版は**プロキシなどの設定なしで** `http://127.0.0.1` のローカル LLM に直接つながります。
+
+### ソースから起動 (開発者向け)
 
 ```bash
 npm install
