@@ -128,6 +128,60 @@ describe('LLMClient', () => {
     expect(bodies[1]).not.toHaveProperty('temperature');
   });
 
+  it('並行呼び出しでも両方成功する (片方が先に切り替えた後、もう片方も再試行する)', async () => {
+    // presentMenu のラベル翻訳など chat は Promise.all で並行に呼ばれる。
+    // 両リクエストが旧形式 (max_tokens) で出た場合、先着が状態を切り替えた後でも
+    // 後着が「自分の body が旧形式だった」ことを根拠に再試行できることを固定する。
+    let parallelPending: ((v: unknown) => void)[] = [];
+    const transport: LLMTransport = {
+      post: async (_p, body) => {
+        const b = body as Record<string, unknown>;
+        if ('max_tokens' in b) {
+          // 両方が旧形式で到着するまで待たせてから、同時に 400 を返す
+          await new Promise((r) => {
+            parallelPending.push(r);
+            if (parallelPending.length === 2) {
+              for (const f of parallelPending) f(undefined);
+              parallelPending = [];
+            }
+          });
+          const err = new Error(
+            `HTTP 400: {"error":{"message":"Unsupported parameter: 'max_tokens' ...","param":"max_tokens","code":"unsupported_parameter"}}`,
+          ) as Error & { status: number };
+          err.status = 400;
+          throw err;
+        }
+        return chatResponse('ok');
+      },
+      get: async () => ({}),
+    };
+    const client = new LLMClient(transport, CFG);
+    const [a, b] = await Promise.all([
+      client.chat([{ role: 'user', content: 'a' }]),
+      client.chat([{ role: 'user', content: 'b' }]),
+    ]);
+    expect(a).toBe('ok');
+    expect(b).toBe('ok');
+  });
+
+  it('kind と param の組が合わない 400 (unsupported_value + max_tokens) では適応しない', async () => {
+    let calls = 0;
+    const transport: LLMTransport = {
+      post: async () => {
+        calls++;
+        const err = new Error(
+          `HTTP 400: {"error":{"message":"Unsupported value: 'max_tokens' ...","param":"max_tokens","code":"unsupported_value"}}`,
+        ) as Error & { status: number };
+        err.status = 400;
+        throw err;
+      },
+      get: async () => ({}),
+    };
+    const client = new LLMClient(transport, CFG);
+    await expect(client.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(LLMError);
+    expect(calls).toBe(1); // 改名へ誤誘導されず即エラー
+  });
+
   it('パラメータ非互換以外の 400 は従来どおり即エラー (無限リトライしない)', async () => {
     let calls = 0;
     const transport: LLMTransport = {

@@ -54,16 +54,26 @@ function isRetryable(err: unknown): boolean {
  * 文字列から param を拾う (LM Studio / Ollama は max_tokens を受けるため、
  * ここに来るのは本家 OpenAI 等の互換サーバのみ)。
  */
-function unsupportedParamFrom(err: unknown): string | undefined {
+function unsupportedParamFrom(
+  err: unknown,
+): { param: string; kind: 'parameter' | 'value' } | undefined {
   if ((err as { status?: number }).status !== 400) return undefined;
   const msg = String((err as Error).message ?? err);
-  if (!/unsupported_parameter|unsupported_value|Unsupported parameter|Unsupported value/i.test(msg)) {
-    return undefined;
-  }
-  const m =
-    /['"]?param['"]?\s*:\s*['"]([\w.]+)['"]/.exec(msg) ??
-    /Unsupported (?:parameter|value)s?:?\s*['"]([\w.]+)['"]/i.exec(msg);
-  return m?.[1];
+  // kind は code (unsupported_parameter / unsupported_value) を優先し、
+  // 無ければメッセージの "Unsupported parameter/value" 表現から推定する。
+  // param と kind の「組」で判定する (例: unsupported_value + max_tokens を
+  // 改名と誤検出して状態を恒久変更しないため)
+  const kind = (/['"]?code['"]?\s*:\s*['"]unsupported_(parameter|value)['"]/.exec(msg)?.[1] ??
+    /Unsupported (parameter|value)/i.exec(msg)?.[1]?.toLowerCase()) as
+    | 'parameter'
+    | 'value'
+    | undefined;
+  if (kind !== 'parameter' && kind !== 'value') return undefined;
+  const param =
+    /['"]?param['"]?\s*:\s*['"]([\w.]+)['"]/.exec(msg)?.[1] ??
+    /Unsupported (?:parameter|value)s?:?\s*['"]([\w.]+)['"]/i.exec(msg)?.[1];
+  if (param === undefined) return undefined;
+  return { param, kind };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -106,21 +116,30 @@ export class LLMClient {
 
   /**
    * 400 unsupported_parameter/value に対し、互換設定を切り替えて再試行可能なら
-   * true を返す (各切替は接続につき 1 回だけ → 無限ループしない)。
+   * true を返す。
    * - max_tokens 非対応 (OpenAI o1/o3/gpt-5 系) → max_completion_tokens へ改名
    * - temperature 非対応 (固定値モデル) → 以後省略
+   * 再試行可否は「この呼び出しが送った body が旧形式だったか」で判定する —
+   * 並行呼び出しで他のリクエストが先に切り替えた後でも、自分の body が古ければ
+   * 再試行する (状態は既に新しいので二重切替はしない)。再試行後の body は
+   * 新形式で組まれるため、同じ 400 が続いても再発火せず構造的に終了する。
    */
-  private adaptToUnsupportedParam(err: unknown): boolean {
-    const param = unsupportedParamFrom(err);
-    if (param === 'max_tokens' && this.tokenParam === 'max_tokens') {
-      this.tokenParam = 'max_completion_tokens';
-      this.logger.log({ event: 'llm.paramAdapt', param, to: 'max_completion_tokens' });
-      return true;
+  private adaptToUnsupportedParam(err: unknown, sentBody: Record<string, unknown>): boolean {
+    const u = unsupportedParamFrom(err);
+    if (u === undefined) return false;
+    if (u.param === 'max_tokens' && u.kind === 'parameter') {
+      if (this.tokenParam === 'max_tokens') {
+        this.tokenParam = 'max_completion_tokens';
+        this.logger.log({ event: 'llm.paramAdapt', param: u.param, to: 'max_completion_tokens' });
+      }
+      return 'max_tokens' in sentBody;
     }
-    if (param === 'temperature' && !this.omitTemperature) {
-      this.omitTemperature = true;
-      this.logger.log({ event: 'llm.paramAdapt', param, to: 'omitted' });
-      return true;
+    if (u.param === 'temperature' && u.kind === 'value') {
+      if (!this.omitTemperature) {
+        this.omitTemperature = true;
+        this.logger.log({ event: 'llm.paramAdapt', param: u.param, to: 'omitted' });
+      }
+      return 'temperature' in sentBody;
     }
     return false;
   }
@@ -160,8 +179,9 @@ export class LLMClient {
           error: String(err),
         });
         // パラメータ非互換 (400) は原因が確定的なので、設定を切り替えて
-        // 試行回数を消費せずに即やり直す (切替は種類ごとに 1 回だけ)
-        if (this.adaptToUnsupportedParam(err)) {
+        // 試行回数を消費せずに即やり直す (再試行後の body は新形式になるので
+        // 同種の発火は呼び出しごとに高々 1 回)
+        if (this.adaptToUnsupportedParam(err, body)) {
           attempt--;
           continue;
         }
