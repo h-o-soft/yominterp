@@ -42,9 +42,42 @@ function isRetryable(err: unknown): boolean {
   return status >= 500;
 }
 
+/**
+ * HTTP 400 の「このパラメータは非対応」エラーから対象パラメータ名を抽出する。
+ * OpenAI の新しめのモデル (o1/o3/gpt-5 系) は max_tokens を廃止して
+ * max_completion_tokens を要求し、temperature も既定値以外を拒否する。
+ * エラー本文の例:
+ *   "Unsupported parameter: 'max_tokens' is not supported with this model.
+ *    Use 'max_completion_tokens' instead." (param: max_tokens,
+ *    code: unsupported_parameter)
+ * transport はエラーメッセージに応答本文を含める (HTTP 400: {...}) ので、
+ * 文字列から param を拾う (LM Studio / Ollama は max_tokens を受けるため、
+ * ここに来るのは本家 OpenAI 等の互換サーバのみ)。
+ */
+function unsupportedParamFrom(err: unknown): string | undefined {
+  if ((err as { status?: number }).status !== 400) return undefined;
+  const msg = String((err as Error).message ?? err);
+  if (!/unsupported_parameter|unsupported_value|Unsupported parameter|Unsupported value/i.test(msg)) {
+    return undefined;
+  }
+  const m =
+    /['"]?param['"]?\s*:\s*['"]([\w.]+)['"]/.exec(msg) ??
+    /Unsupported (?:parameter|value)s?:?\s*['"]([\w.]+)['"]/i.exec(msg);
+  return m?.[1];
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class LLMClient {
+  /**
+   * トークン上限のパラメータ名。OpenAI の新モデルが max_tokens を 400 で拒否
+   * したら max_completion_tokens に切り替え、以後この接続では切替後を使う
+   * (LM Studio / Ollama / 旧 OpenAI は従来どおり max_tokens)。
+   */
+  private tokenParam: 'max_tokens' | 'max_completion_tokens' = 'max_tokens';
+  /** temperature が unsupported_value (固定値モデル) なら以後省略する */
+  private omitTemperature = false;
+
   constructor(
     private readonly transport: LLMTransport,
     readonly config: LLMConfig,
@@ -59,18 +92,47 @@ export class LLMClient {
     return (res.data ?? []).map((m) => m.id ?? '').filter((id) => id !== '');
   }
 
-  /** chat completion を 1 回呼び、テキスト応答を返す (指数バックオフで 2 回まで再試行) */
-  async chat(messages: ChatMessage[], opts: ChatOptions = {}): Promise<string> {
-    const body = {
+  /** 現在の互換設定で chat completion のリクエスト body を組み立てる */
+  private chatBody(messages: ChatMessage[], opts: ChatOptions): Record<string, unknown> {
+    const body: Record<string, unknown> = {
       model: opts.model ?? this.config.model,
       messages,
-      temperature: opts.temperature ?? this.config.temperature,
-      max_tokens: opts.maxTokens ?? this.config.maxTokens,
+      [this.tokenParam]: opts.maxTokens ?? this.config.maxTokens,
       stream: false,
     };
+    if (!this.omitTemperature) body.temperature = opts.temperature ?? this.config.temperature;
+    return body;
+  }
+
+  /**
+   * 400 unsupported_parameter/value に対し、互換設定を切り替えて再試行可能なら
+   * true を返す (各切替は接続につき 1 回だけ → 無限ループしない)。
+   * - max_tokens 非対応 (OpenAI o1/o3/gpt-5 系) → max_completion_tokens へ改名
+   * - temperature 非対応 (固定値モデル) → 以後省略
+   */
+  private adaptToUnsupportedParam(err: unknown): boolean {
+    const param = unsupportedParamFrom(err);
+    if (param === 'max_tokens' && this.tokenParam === 'max_tokens') {
+      this.tokenParam = 'max_completion_tokens';
+      this.logger.log({ event: 'llm.paramAdapt', param, to: 'max_completion_tokens' });
+      return true;
+    }
+    if (param === 'temperature' && !this.omitTemperature) {
+      this.omitTemperature = true;
+      this.logger.log({ event: 'llm.paramAdapt', param, to: 'omitted' });
+      return true;
+    }
+    return false;
+  }
+
+  /** chat completion を 1 回呼び、テキスト応答を返す (指数バックオフで 2 回まで再試行) */
+  async chat(messages: ChatMessage[], opts: ChatOptions = {}): Promise<string> {
+    const model = opts.model ?? this.config.model;
     const maxAttempts = 3;
     let lastErr: unknown;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      // body は試行ごとに組み直す (上の互換切替を反映するため)
+      const body = this.chatBody(messages, opts);
       const startedAt = nowMs();
       try {
         const res = (await this.transport.post('/chat/completions', body, this.config.timeoutMs)) as {
@@ -79,7 +141,7 @@ export class LLMClient {
         const content = res.choices?.[0]?.message?.content;
         this.logger.log({
           event: 'llm.chat',
-          model: body.model,
+          model,
           attempt,
           ms: nowMs() - startedAt,
           ok: content !== undefined,
@@ -92,11 +154,17 @@ export class LLMClient {
         lastErr = err;
         this.logger.log({
           event: 'llm.error',
-          model: body.model,
+          model,
           attempt,
           ms: nowMs() - startedAt,
           error: String(err),
         });
+        // パラメータ非互換 (400) は原因が確定的なので、設定を切り替えて
+        // 試行回数を消費せずに即やり直す (切替は種類ごとに 1 回だけ)
+        if (this.adaptToUnsupportedParam(err)) {
+          attempt--;
+          continue;
+        }
         if (attempt < maxAttempts && isRetryable(err)) {
           await sleep(500 * 4 ** (attempt - 1)); // 500ms, 2s
           continue;
