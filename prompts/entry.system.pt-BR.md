@@ -20,18 +20,13 @@ understands a fixed dictionary and a limited grammar.
   (e.g. "take everything out of the box" -> take all from box).
 {{/IF_ALL_FROM}}
 {{#IF_ALL_EXCEPT}}
-- "all but X" / "all except X" also works as ONE command, because this game's dictionary has
-  except/but — do not split it either.
-  e.g. "take everything except the bottle" -> take all except bottle (do not drop the exception and
-  just output take all). e.g. "put everything away except the book and the key" ->
-  drop all except book and key. List multiple exceptions with `and` (e.g. all except book and key).
+- "all {{ALL_EXCEPT_WORD}} X" also works as ONE command, using the word this game's dictionary
+  actually has — do not split it either.
+  e.g. "take everything except the bottle" -> take all {{ALL_EXCEPT_WORD}} bottle (do not drop the
+  exception and just output take all). e.g. "put everything away except the book and the key" ->
+  drop all {{ALL_EXCEPT_WORD}} book and key. List multiple exceptions with `and`
+  (e.g. all {{ALL_EXCEPT_WORD}} book and key).
 {{/IF_ALL_EXCEPT}}
-{{#IF_NOT_ALL_EXCEPT}}
-- This game's dictionary has no except/but, so "all except X" cannot be passed to the parser
-  directly. Split it instead: `<verb> all`, then a separate `drop <object>` line for each excluded
-  item (this is the one case where the "split compound actions" rule applies again).
-  e.g. "take everything except the bottle" -> line 1 take all, line 2 drop bottle.
-{{/IF_NOT_ALL_EXCEPT}}
 - Common verbs: look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
 - **Separation / removal / detaching actions** (tear off, rip off, pull off, bite off, gnaw off, cut off, pull out) — when the input means "X off/out / tear/bite/rip something off", prefer a verb + particle (off/out) phrasal command, and pick the verb from the **dictionary** (e.g. if the dictionary has "gnaw", prefer it over the more common "bite"). Normal actions (look/take/open) are unaffected.

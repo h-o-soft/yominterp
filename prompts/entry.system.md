@@ -18,18 +18,12 @@
   `<動詞> all from <容器>` も同様に 1 コマンドで渡せる (例: 「箱の中身を全部取る」→ take all from box)。
 {{/IF_ALL_FROM}}
 {{#IF_ALL_EXCEPT}}
-- 「〜以外全部」はこのゲームの辞書に except/but があるので `all but <語>` / `all except <語>` として
+- 「〜以外全部」はこのゲームの辞書にある `{{ALL_EXCEPT_WORD}}` を使って `all {{ALL_EXCEPT_WORD}} <語>` として
   1 コマンドのまま渡せる (分解しない)。
-  例: 「瓶以外全部取る」→ take all except bottle (「瓶を除いて」を落として take all だけにしない)
-  例: 「本と鍵以外全部落として」→ drop all except book and key
-  除外対象が複数あるときは `and` で列挙する (例: all except book and key)。
+  例: 「瓶以外全部取る」→ take all {{ALL_EXCEPT_WORD}} bottle (「瓶を除いて」を落として take all だけにしない)
+  例: 「本と鍵以外全部落として」→ drop all {{ALL_EXCEPT_WORD}} book and key
+  除外対象が複数あるときは `and` で列挙する (例: all {{ALL_EXCEPT_WORD}} book and key)。
 {{/IF_ALL_EXCEPT}}
-{{#IF_NOT_ALL_EXCEPT}}
-- このゲームの辞書には except / but が無く、「〜以外全部」をパーサへ直接渡せない。
-  `<動詞> all` の後に、除外したい対象ごとに `drop <対象>` を続けて複数コマンドに分解する
-  (この場合に限り「複合動作は複数行に分解する」ルールへ戻る)。
-  例: 「瓶以外全部取る」→ 1 行目 take all、2 行目 drop bottle
-{{/IF_NOT_ALL_EXCEPT}}
 - よく使う動詞: look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
   knock, lock, unlock, turn on, turn off, talk to <人>, ask <人> about <話題>,

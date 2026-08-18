@@ -59,8 +59,8 @@
   {
     "context": "You can see a bottle, a sandwich and a knife here.",
     "commands": [
-      "take all except bottle"
+      "take all"
     ],
-    "input": "prends tout sauf la bouteille"
+    "input": "prends tout ce qu'il y a ici"
   }
 ]

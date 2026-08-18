@@ -303,19 +303,26 @@ export class EntryTranslator {
     // "all but/except X" はゲーム側パーサ (ZIL/Inform ライブラリ) の実装依存であり
     // 全 Z-machine 共通ではない (実機確認: refs/darkzil/minilib.zil は ALL の次の語を
     // 一切見ずに無条件で全取得するため、except/but が辞書にすら存在しない)。
-    // 辞書にこの語が無いゲームへ一律で教えると "受理はされるが意図と違う" 誤動作を
-    // 誘発するので、辞書に実在する場合だけ該当ブロックを残す。
-    const supportsAllExcept =
-      this.dictSet.has(truncateForDict('except', this.dictWordLen)) ||
-      this.dictSet.has(truncateForDict('but', this.dictWordLen));
+    // 既存の「コマンドは辞書語彙の範囲で作る」原則をこの構文にも適用し、辞書に実在
+    // する語だけを教える。非対応時に別コマンド列へ組み替えるような代替実装はしない
+    // (それは「無理に通す」実装であり方針に反する) — 対応していなければそのまま
+    // 投げて失敗させ、既存の一般則「意図を最も素直に表す英語コマンドを書く」に委ねる。
+    const exceptWord = this.dictSet.has(truncateForDict('except', this.dictWordLen))
+      ? 'except'
+      : undefined;
+    const butWord =
+      exceptWord === undefined && this.dictSet.has(truncateForDict('but', this.dictWordLen))
+        ? 'but'
+        : undefined;
+    const allExceptWord = exceptWord ?? butWord;
     const supportsAllFrom = this.dictSet.has(truncateForDict('from', this.dictWordLen));
-    let body = applyTemplateBlock(template, 'IF_ALL_EXCEPT', supportsAllExcept);
-    body = applyTemplateBlock(body, 'IF_NOT_ALL_EXCEPT', !supportsAllExcept);
+    let body = applyTemplateBlock(template, 'IF_ALL_EXCEPT', allExceptWord !== undefined);
     body = applyTemplateBlock(body, 'IF_ALL_FROM', supportsAllFrom);
     this.systemPrompt = body
       .replace('{{DICT_WORDS}}', vocab.dictWords.join(' '))
       .replace('{{OBJECT_NAMES}}', objects.join(', '))
-      .replaceAll('{{DICT_WORD_LEN}}', String(this.dictWordLen));
+      .replaceAll('{{DICT_WORD_LEN}}', String(this.dictWordLen))
+      .replaceAll('{{ALL_EXCEPT_WORD}}', allExceptWord ?? 'except');
     // few-shot: ja は parse 失敗を空配列で握りつぶす (後方互換)。非 ja は
     // missing / JSON 不正も fail closed (起動エラーへ寄せる)。
     const fewshotName = promptFileName('fewshot.entry.json', lang);

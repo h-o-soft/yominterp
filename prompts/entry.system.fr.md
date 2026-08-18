@@ -20,18 +20,13 @@ Ce n'est pas une traduction naturelle. L'analyseur ne comprend qu'un dictionnair
   (ex. « prends tout ce qu'il y a dans la boîte » -> take all from box).
 {{/IF_ALL_FROM}}
 {{#IF_ALL_EXCEPT}}
-- « all but X » / « all except X » fonctionne aussi en UNE seule commande, car le dictionnaire de ce
-  jeu contient except/but — ne la décomposez pas non plus.
-  ex. « prends tout sauf la bouteille » -> take all except bottle (ne perdez pas l'exception en
-  écrivant simplement take all). ex. « range tout sauf le livre et la clé » ->
-  drop all except book and key. Listez plusieurs exceptions avec `and` (ex. all except book and key).
+- « all {{ALL_EXCEPT_WORD}} X » fonctionne aussi en UNE seule commande, avec le mot que ce jeu a
+  réellement dans son dictionnaire — ne la décomposez pas non plus.
+  ex. « prends tout sauf la bouteille » -> take all {{ALL_EXCEPT_WORD}} bottle (ne perdez pas
+  l'exception en écrivant simplement take all). ex. « range tout sauf le livre et la clé » ->
+  drop all {{ALL_EXCEPT_WORD}} book and key. Listez plusieurs exceptions avec `and`
+  (ex. all {{ALL_EXCEPT_WORD}} book and key).
 {{/IF_ALL_EXCEPT}}
-{{#IF_NOT_ALL_EXCEPT}}
-- Le dictionnaire de ce jeu ne contient pas except/but : « all except X » ne peut pas être transmis
-  directement à l'analyseur. Décomposez plutôt : `<verbe> all`, puis une ligne `drop <objet>` séparée
-  pour chaque objet à exclure (c'est le seul cas où la règle de décomposition s'applique de nouveau).
-  ex. « prends tout sauf la bouteille » -> 1re ligne take all, 2e ligne drop bottle.
-{{/IF_NOT_ALL_EXCEPT}}
 - Verbes courants : look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
 - **Actions de séparation / arrachement / destruction** (arracher, déchirer, couper, ronger pour détacher) : quand l'intention est « détacher/arracher X », préférez une commande verbe + particule (off/out) — ex. « ronger jusqu'à détacher » → gnaw off, « arracher » → tear off / pull off, « couper » → cut off — et choisissez le verbe dans le **dictionnaire** (si « gnaw » y figure, préférez-le à « bite »). Les actions normales (look/take/open) ne changent pas.

@@ -179,13 +179,14 @@ const VOCAB = {
 describe('EntryTranslator: all-except/from の辞書依存ゲーティング', () => {
   // "all but/except" はゲーム側パーサ実装依存 (darkzil の minilib は ALL の次の語を
   // 一切見ない) なので、辞書に except/but/from が実在する時だけ該当ブロックを残す。
+  // 非対応時は代替コマンド列 (drop 等) へ組み替える指示を足さない (無理に通す実装は
+  // しない方針): ブロックが丸ごと消え、既存の一般則に委ねる。
   const GATE_PROMPTS: PromptProvider = {
     load: async (name) => {
       if (name === 'entry.system.md') {
         return (
           'SYSTEM {{DICT_WORDS}}\n' +
-          '{{#IF_ALL_EXCEPT}}HAS_EXCEPT_BLOCK{{/IF_ALL_EXCEPT}}\n' +
-          '{{#IF_NOT_ALL_EXCEPT}}NO_EXCEPT_BLOCK{{/IF_NOT_ALL_EXCEPT}}\n' +
+          '{{#IF_ALL_EXCEPT}}HAS_EXCEPT_BLOCK word={{ALL_EXCEPT_WORD}}{{/IF_ALL_EXCEPT}}\n' +
           '{{#IF_ALL_FROM}}HAS_FROM_BLOCK{{/IF_ALL_FROM}}'
         );
       }
@@ -210,18 +211,23 @@ describe('EntryTranslator: all-except/from の辞書依存ゲーティング', (
     return (calls[0] as { content: string }[])[0]!.content;
   }
 
-  it('辞書に except/but/from が無ければ (darkpit 相当) NOT_ALL_EXCEPT のみ残す', async () => {
+  it('辞書に except/but/from が無ければ (darkpit 相当) 両ブロックとも消え、代替指示も足さない', async () => {
     const prompt = await systemPromptFor(['take', 'all', 'look']);
     expect(prompt).not.toContain('HAS_EXCEPT_BLOCK');
-    expect(prompt).toContain('NO_EXCEPT_BLOCK');
     expect(prompt).not.toContain('HAS_FROM_BLOCK');
+    expect(prompt).not.toContain('drop');
   });
 
-  it('辞書に except/but/from があれば (zork1/ghosts 相当) 両方の肯定ブロックを残す', async () => {
+  it('辞書に except と but の両方があれば except を優先する', async () => {
     const prompt = await systemPromptFor(['take', 'all', 'except', 'but', 'from']);
-    expect(prompt).toContain('HAS_EXCEPT_BLOCK');
-    expect(prompt).not.toContain('NO_EXCEPT_BLOCK');
+    expect(prompt).toContain('HAS_EXCEPT_BLOCK word=except');
     expect(prompt).toContain('HAS_FROM_BLOCK');
+  });
+
+  it('辞書に but しか無ければ but を使う (except を誤って教えない)', async () => {
+    const prompt = await systemPromptFor(['take', 'all', 'but']);
+    expect(prompt).toContain('HAS_EXCEPT_BLOCK word=but');
+    expect(prompt).not.toContain('word=except');
   });
 });
 
