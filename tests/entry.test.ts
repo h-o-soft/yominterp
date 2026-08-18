@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyTemplateBlock,
   EntryTranslator,
   filterUnintendedMetas,
   parseCandidates,
@@ -106,6 +107,24 @@ describe('filterUnintendedMetas (破壊的 meta ガード)', () => {
   });
 });
 
+describe('applyTemplateBlock', () => {
+  const tpl = 'A\n{{#TAG}}kept line\n{{/TAG}}B';
+
+  it('keep=true でマーカーを外して中身を残す', () => {
+    expect(applyTemplateBlock(tpl, 'TAG', true)).toBe('A\nkept line\nB');
+  });
+
+  it('keep=false でブロックごと除去する', () => {
+    expect(applyTemplateBlock(tpl, 'TAG', false)).toBe('A\nB');
+  });
+
+  it('マーカーが無いテンプレートには無害 (無変化)', () => {
+    const plain = 'no markers here';
+    expect(applyTemplateBlock(plain, 'TAG', true)).toBe(plain);
+    expect(applyTemplateBlock(plain, 'TAG', false)).toBe(plain);
+  });
+});
+
 describe('usefulObjectNames', () => {
   it('Inform 内部オブジェクトを除外する', () => {
     expect(usefulObjectNames(['Class', 'Object', 'Great Hall', 'lamp'])).toEqual([
@@ -156,6 +175,55 @@ const VOCAB = {
   dictWords: ['take', 'lamp', 'north', 'open', 'box'],
   objectNames: ['Class', 'lamp', 'Great Hall'],
 };
+
+describe('EntryTranslator: all-except/from の辞書依存ゲーティング', () => {
+  // "all but/except" はゲーム側パーサ実装依存 (darkzil の minilib は ALL の次の語を
+  // 一切見ない) なので、辞書に except/but/from が実在する時だけ該当ブロックを残す。
+  const GATE_PROMPTS: PromptProvider = {
+    load: async (name) => {
+      if (name === 'entry.system.md') {
+        return (
+          'SYSTEM {{DICT_WORDS}}\n' +
+          '{{#IF_ALL_EXCEPT}}HAS_EXCEPT_BLOCK{{/IF_ALL_EXCEPT}}\n' +
+          '{{#IF_NOT_ALL_EXCEPT}}NO_EXCEPT_BLOCK{{/IF_NOT_ALL_EXCEPT}}\n' +
+          '{{#IF_ALL_FROM}}HAS_FROM_BLOCK{{/IF_ALL_FROM}}'
+        );
+      }
+      if (name === 'fewshot.entry.json') return '[]';
+      throw new Error('not found');
+    },
+  };
+
+  async function systemPromptFor(dictWords: string[]): Promise<string> {
+    const calls: unknown[][] = [];
+    const transport: LLMTransport = {
+      post: async (_p, body) => {
+        calls.push((body as { messages: unknown[] }).messages);
+        return { choices: [{ message: { content: 'look' } }] };
+      },
+      get: async () => ({}),
+    };
+    const llm = new LLMClient(transport, { model: 'm', temperature: 0, maxTokens: 10, timeoutMs: 1000 });
+    const tr = new EntryTranslator(llm, GATE_PROMPTS, { contextTurns: 2 });
+    await tr.init({ dictWords, objectNames: [] });
+    await tr.translate('見る', []);
+    return (calls[0] as { content: string }[])[0]!.content;
+  }
+
+  it('辞書に except/but/from が無ければ (darkpit 相当) NOT_ALL_EXCEPT のみ残す', async () => {
+    const prompt = await systemPromptFor(['take', 'all', 'look']);
+    expect(prompt).not.toContain('HAS_EXCEPT_BLOCK');
+    expect(prompt).toContain('NO_EXCEPT_BLOCK');
+    expect(prompt).not.toContain('HAS_FROM_BLOCK');
+  });
+
+  it('辞書に except/but/from があれば (zork1/ghosts 相当) 両方の肯定ブロックを残す', async () => {
+    const prompt = await systemPromptFor(['take', 'all', 'except', 'but', 'from']);
+    expect(prompt).toContain('HAS_EXCEPT_BLOCK');
+    expect(prompt).not.toContain('NO_EXCEPT_BLOCK');
+    expect(prompt).toContain('HAS_FROM_BLOCK');
+  });
+});
 
 describe('EntryTranslator', () => {
   it('system プロンプトに辞書とオブジェクト名を埋め込み、few-shot を挟む', async () => {

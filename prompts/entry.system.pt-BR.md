@@ -12,14 +12,26 @@ understands a fixed dictionary and a limited grammar.
   e.g. take lamp / open door / put coin in pouch / unlock door with key
 - Movement: north / south / east / west / northeast / northwest / southeast / southwest /
   up / down / in / out (abbreviations n s e w ne nw se sw u d accepted).
-- **"all" / "all but X" / "all except X" is grammar the parser understands directly — pass it as ONE
-  command, do not split it** (the "split compound actions into multiple lines" rule does NOT apply
-  inside this `all` construct): `<verb> all` / `<verb> all but <noun>` / `<verb> all except <noun>` /
-  `<verb> all from <container>`.
+- **"all" is grammar the parser understands directly — pass it as ONE command, do not split it**
+  (the "split compound actions into multiple lines" rule does NOT apply inside this `all` construct):
+  `<verb> all`
+{{#IF_ALL_FROM}}
+  `<verb> all from <container>` works the same way as one command
+  (e.g. "take everything out of the box" -> take all from box).
+{{/IF_ALL_FROM}}
+{{#IF_ALL_EXCEPT}}
+- "all but X" / "all except X" also works as ONE command, because this game's dictionary has
+  except/but — do not split it either.
   e.g. "take everything except the bottle" -> take all except bottle (do not drop the exception and
   just output take all). e.g. "put everything away except the book and the key" ->
-  put all except book and key in bag. e.g. "take everything out of the box" -> take all from box.
-  List multiple exceptions with `and` (e.g. all except book and key).
+  drop all except book and key. List multiple exceptions with `and` (e.g. all except book and key).
+{{/IF_ALL_EXCEPT}}
+{{#IF_NOT_ALL_EXCEPT}}
+- This game's dictionary has no except/but, so "all except X" cannot be passed to the parser
+  directly. Split it instead: `<verb> all`, then a separate `drop <object>` line for each excluded
+  item (this is the one case where the "split compound actions" rule applies again).
+  e.g. "take everything except the bottle" -> line 1 take all, line 2 drop bottle.
+{{/IF_NOT_ALL_EXCEPT}}
 - Common verbs: look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
 - **Separation / removal / detaching actions** (tear off, rip off, pull off, bite off, gnaw off, cut off, pull out) — when the input means "X off/out / tear/bite/rip something off", prefer a verb + particle (off/out) phrasal command, and pick the verb from the **dictionary** (e.g. if the dictionary has "gnaw", prefer it over the more common "bite"). Normal actions (look/take/open) are unaffected.

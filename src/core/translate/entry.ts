@@ -71,6 +71,16 @@ export function truncateForDict(word: string, dictWordLen = 9): string {
   return word.slice(0, dictWordLen);
 }
 
+/**
+ * テンプレート中の `{{#TAG}}...{{/TAG}}` 条件ブロックを解決する。
+ * `keep` が true ならマーカーを外して中身を残し、false なら丸ごと除去する。
+ * マーカーが無いテンプレート (テスト用モック等) には無害 (何もマッチしない)。
+ */
+export function applyTemplateBlock(template: string, tag: string, keep: boolean): string {
+  const re = new RegExp(`\\{\\{#${tag}\\}\\}([\\s\\S]*?)\\{\\{\\/${tag}\\}\\}\\n?`, 'g');
+  return template.replace(re, keep ? '$1' : '');
+}
+
 /** Inform コンパイラ内部オブジェクト等、プロンプトに不要な名前 */
 const INTERNAL_OBJECT_NAMES = new Set([
   'Class', 'Object', 'Routine', 'String', '(Directions)', 'Room', 'object',
@@ -289,11 +299,23 @@ export class EntryTranslator {
     const template = await this.prompts.load(promptFileName('entry.system.md', lang));
     const objects = usefulObjectNames(vocab.objectNames);
     this.dictWordLen = Math.max(6, ...vocab.dictWords.map((w) => w.length));
-    this.systemPrompt = template
+    this.dictSet = new Set(vocab.dictWords.map((w) => w.toLowerCase()));
+    // "all but/except X" はゲーム側パーサ (ZIL/Inform ライブラリ) の実装依存であり
+    // 全 Z-machine 共通ではない (実機確認: refs/darkzil/minilib.zil は ALL の次の語を
+    // 一切見ずに無条件で全取得するため、except/but が辞書にすら存在しない)。
+    // 辞書にこの語が無いゲームへ一律で教えると "受理はされるが意図と違う" 誤動作を
+    // 誘発するので、辞書に実在する場合だけ該当ブロックを残す。
+    const supportsAllExcept =
+      this.dictSet.has(truncateForDict('except', this.dictWordLen)) ||
+      this.dictSet.has(truncateForDict('but', this.dictWordLen));
+    const supportsAllFrom = this.dictSet.has(truncateForDict('from', this.dictWordLen));
+    let body = applyTemplateBlock(template, 'IF_ALL_EXCEPT', supportsAllExcept);
+    body = applyTemplateBlock(body, 'IF_NOT_ALL_EXCEPT', !supportsAllExcept);
+    body = applyTemplateBlock(body, 'IF_ALL_FROM', supportsAllFrom);
+    this.systemPrompt = body
       .replace('{{DICT_WORDS}}', vocab.dictWords.join(' '))
       .replace('{{OBJECT_NAMES}}', objects.join(', '))
       .replaceAll('{{DICT_WORD_LEN}}', String(this.dictWordLen));
-    this.dictSet = new Set(vocab.dictWords.map((w) => w.toLowerCase()));
     // few-shot: ja は parse 失敗を空配列で握りつぶす (後方互換)。非 ja は
     // missing / JSON 不正も fail closed (起動エラーへ寄せる)。
     const fewshotName = promptFileName('fewshot.entry.json', lang);

@@ -12,14 +12,26 @@ Ce n'est pas une traduction naturelle. L'analyseur ne comprend qu'un dictionnair
   ex. take lamp / open door / put coin in pouch / unlock door with key
 - Déplacement : north / south / east / west / northeast / northwest / southeast / southwest /
   up / down / in / out (abréviations n s e w ne nw se sw u d acceptées).
-- **« all » / « all but X » / « all except X » est une grammaire que l'analyseur comprend directement
-  — transmettez-la en UNE seule commande, ne la décomposez pas** (la règle « décomposez les actions
-  composées en plusieurs lignes » ne s'applique PAS à l'intérieur de cette construction `all`) :
-  `<verbe> all` / `<verbe> all but <nom>` / `<verbe> all except <nom>` / `<verbe> all from <contenant>`.
+- **« all » est une grammaire que l'analyseur comprend directement — transmettez-la en UNE seule
+  commande, ne la décomposez pas** (la règle « décomposez les actions composées en plusieurs lignes »
+  ne s'applique PAS à l'intérieur de cette construction `all`) : `<verbe> all`
+{{#IF_ALL_FROM}}
+  `<verbe> all from <contenant>` fonctionne de la même façon, en une seule commande
+  (ex. « prends tout ce qu'il y a dans la boîte » -> take all from box).
+{{/IF_ALL_FROM}}
+{{#IF_ALL_EXCEPT}}
+- « all but X » / « all except X » fonctionne aussi en UNE seule commande, car le dictionnaire de ce
+  jeu contient except/but — ne la décomposez pas non plus.
   ex. « prends tout sauf la bouteille » -> take all except bottle (ne perdez pas l'exception en
   écrivant simplement take all). ex. « range tout sauf le livre et la clé » ->
-  put all except book and key in bag. ex. « prends tout ce qu'il y a dans la boîte » -> take all from box.
-  Listez plusieurs exceptions avec `and` (ex. all except book and key).
+  drop all except book and key. Listez plusieurs exceptions avec `and` (ex. all except book and key).
+{{/IF_ALL_EXCEPT}}
+{{#IF_NOT_ALL_EXCEPT}}
+- Le dictionnaire de ce jeu ne contient pas except/but : « all except X » ne peut pas être transmis
+  directement à l'analyseur. Décomposez plutôt : `<verbe> all`, puis une ligne `drop <objet>` séparée
+  pour chaque objet à exclure (c'est le seul cas où la règle de décomposition s'applique de nouveau).
+  ex. « prends tout sauf la bouteille » -> 1re ligne take all, 2e ligne drop bottle.
+{{/IF_NOT_ALL_EXCEPT}}
 - Verbes courants : look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
 - **Actions de séparation / arrachement / destruction** (arracher, déchirer, couper, ronger pour détacher) : quand l'intention est « détacher/arracher X », préférez une commande verbe + particule (off/out) — ex. « ronger jusqu'à détacher » → gnaw off, « arracher » → tear off / pull off, « couper » → cut off — et choisissez le verbe dans le **dictionnaire** (si « gnaw » y figure, préférez-le à « bite »). Les actions normales (look/take/open) ne changent pas.
