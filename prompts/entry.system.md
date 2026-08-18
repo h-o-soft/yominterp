@@ -13,17 +13,15 @@
 - 移動: north / south / east / west / northeast / northwest / southeast / southwest /
   up / down / in / out (略語 n s e w ne nw se sw u d も可)
 - **「全部」はパーサが直接理解する文法なので分解せず 1 コマンドのまま渡す**
-  (「複合動作は複数行に分解する」ルールはこの `all` 構文の中身には適用しない): `<動詞> all`
-{{#IF_ALL_FROM}}
-  `<動詞> all from <容器>` も同様に 1 コマンドで渡せる (例: 「箱の中身を全部取る」→ take all from box)。
-{{/IF_ALL_FROM}}
-{{#IF_ALL_EXCEPT}}
-- 「〜以外全部」はこのゲームの辞書にある `{{ALL_EXCEPT_WORD}}` を使って `all {{ALL_EXCEPT_WORD}} <語>` として
-  1 コマンドのまま渡せる (分解しない)。
+  (「複合動作は複数行に分解する」ルールはこの `all` 構文の中身には適用しない): `<動詞> all` /
+  `<動詞> all from <容器>` (例: 「箱の中身を全部取る」→ take all from box)。
+- 「〜以外全部」は `all {{ALL_EXCEPT_WORD}} <語>` として 1 コマンドのまま渡す (分解しない)。
   例: 「瓶以外全部取る」→ take all {{ALL_EXCEPT_WORD}} bottle (「瓶を除いて」を落として take all だけにしない)
   例: 「本と鍵以外全部落として」→ drop all {{ALL_EXCEPT_WORD}} book and key
   除外対象が複数あるときは `and` で列挙する (例: all {{ALL_EXCEPT_WORD}} book and key)。
-{{/IF_ALL_EXCEPT}}
+  このゲームの辞書に `{{ALL_EXCEPT_WORD}}` が無くても、`take all` と `drop <対象>` に分解したり
+  除外そのものを諦めたりしない。素直に `all {{ALL_EXCEPT_WORD}} <語>` の形で渡す
+  (パーサが拒否・無視するかはゲーム側の仕様であり、翻訳としてはこれが正しい)。
 - よく使う動詞: look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
   knock, lock, unlock, turn on, turn off, talk to <人>, ask <人> about <話題>,

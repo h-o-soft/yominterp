@@ -30,5 +30,12 @@
       "take all"
     ],
     "input": "pegue tudo que tem aqui"
+  },
+  {
+    "context": "You can see a bottle, a sandwich and a knife here.",
+    "commands": [
+      "take all except bottle"
+    ],
+    "input": "pegue tudo exceto a garrafa"
   }
 ]

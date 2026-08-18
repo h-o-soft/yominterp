@@ -36,5 +36,10 @@
     "context": "You can see a bottle, a sandwich and a knife here.",
     "ja": "ここにあるもの全部取る",
     "commands": ["take all"]
+  },
+  {
+    "context": "You can see a bottle, a sandwich and a knife here.",
+    "ja": "瓶以外全部取る",
+    "commands": ["take all except bottle"]
   }
 ]

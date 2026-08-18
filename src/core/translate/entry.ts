@@ -71,16 +71,6 @@ export function truncateForDict(word: string, dictWordLen = 9): string {
   return word.slice(0, dictWordLen);
 }
 
-/**
- * テンプレート中の `{{#TAG}}...{{/TAG}}` 条件ブロックを解決する。
- * `keep` が true ならマーカーを外して中身を残し、false なら丸ごと除去する。
- * マーカーが無いテンプレート (テスト用モック等) には無害 (何もマッチしない)。
- */
-export function applyTemplateBlock(template: string, tag: string, keep: boolean): string {
-  const re = new RegExp(`\\{\\{#${tag}\\}\\}([\\s\\S]*?)\\{\\{\\/${tag}\\}\\}\\n?`, 'g');
-  return template.replace(re, keep ? '$1' : '');
-}
-
 /** Inform コンパイラ内部オブジェクト等、プロンプトに不要な名前 */
 const INTERNAL_OBJECT_NAMES = new Set([
   'Class', 'Object', 'Routine', 'String', '(Directions)', 'Room', 'object',
@@ -300,29 +290,22 @@ export class EntryTranslator {
     const objects = usefulObjectNames(vocab.objectNames);
     this.dictWordLen = Math.max(6, ...vocab.dictWords.map((w) => w.length));
     this.dictSet = new Set(vocab.dictWords.map((w) => w.toLowerCase()));
-    // "all but/except X" はゲーム側パーサ (ZIL/Inform ライブラリ) の実装依存であり
-    // 全 Z-machine 共通ではない (実機確認: refs/darkzil/minilib.zil は ALL の次の語を
-    // 一切見ずに無条件で全取得するため、except/but が辞書にすら存在しない)。
-    // 既存の「コマンドは辞書語彙の範囲で作る」原則をこの構文にも適用し、辞書に実在
-    // する語だけを教える。非対応時に別コマンド列へ組み替えるような代替実装はしない
-    // (それは「無理に通す」実装であり方針に反する) — 対応していなければそのまま
-    // 投げて失敗させ、既存の一般則「意図を最も素直に表す英語コマンドを書く」に委ねる。
-    const exceptWord = this.dictSet.has(truncateForDict('except', this.dictWordLen))
+    // 「〜以外全部」は常に literal に `all <word> <語>` として渡す。辞書にその語が無い
+    // ゲームでは拒否・無視されるかもしれないが、それはゲーム側の仕様であり翻訳の忠実性を
+    // 優先する (代替コマンド列への分解や除外の断念はしない — 「無理に通す」実装は避けたい
+    // が、翻訳そのものを諦めるのは別問題)。ゲームの辞書に except/but のどちらかがあれば
+    // その語を使い、無ければ最も自然な英語である except を使う (辞書に無い語でも意図を
+    // 素直に書く、という既存の一般則と同じ扱い)。
+    const allExceptWord = this.dictSet.has(truncateForDict('except', this.dictWordLen))
       ? 'except'
-      : undefined;
-    const butWord =
-      exceptWord === undefined && this.dictSet.has(truncateForDict('but', this.dictWordLen))
+      : this.dictSet.has(truncateForDict('but', this.dictWordLen))
         ? 'but'
-        : undefined;
-    const allExceptWord = exceptWord ?? butWord;
-    const supportsAllFrom = this.dictSet.has(truncateForDict('from', this.dictWordLen));
-    let body = applyTemplateBlock(template, 'IF_ALL_EXCEPT', allExceptWord !== undefined);
-    body = applyTemplateBlock(body, 'IF_ALL_FROM', supportsAllFrom);
-    this.systemPrompt = body
+        : 'except';
+    this.systemPrompt = template
       .replace('{{DICT_WORDS}}', vocab.dictWords.join(' '))
       .replace('{{OBJECT_NAMES}}', objects.join(', '))
       .replaceAll('{{DICT_WORD_LEN}}', String(this.dictWordLen))
-      .replaceAll('{{ALL_EXCEPT_WORD}}', allExceptWord ?? 'except');
+      .replaceAll('{{ALL_EXCEPT_WORD}}', allExceptWord);
     // few-shot: ja は parse 失敗を空配列で握りつぶす (後方互換)。非 ja は
     // missing / JSON 不正も fail closed (起動エラーへ寄せる)。
     const fewshotName = promptFileName('fewshot.entry.json', lang);

@@ -14,19 +14,16 @@ understands a fixed dictionary and a limited grammar.
   up / down / in / out (abbreviations n s e w ne nw se sw u d accepted).
 - **"all" is grammar the parser understands directly — pass it as ONE command, do not split it**
   (the "split compound actions into multiple lines" rule does NOT apply inside this `all` construct):
-  `<verb> all`
-{{#IF_ALL_FROM}}
-  `<verb> all from <container>` works the same way as one command
-  (e.g. "take everything out of the box" -> take all from box).
-{{/IF_ALL_FROM}}
-{{#IF_ALL_EXCEPT}}
-- "all {{ALL_EXCEPT_WORD}} X" also works as ONE command, using the word this game's dictionary
-  actually has — do not split it either.
+  `<verb> all` / `<verb> all from <container>` (e.g. "take everything out of the box" -> take all from box).
+- "all {{ALL_EXCEPT_WORD}} X" also works as ONE command — do not split it either.
   e.g. "take everything except the bottle" -> take all {{ALL_EXCEPT_WORD}} bottle (do not drop the
   exception and just output take all). e.g. "put everything away except the book and the key" ->
   drop all {{ALL_EXCEPT_WORD}} book and key. List multiple exceptions with `and`
   (e.g. all {{ALL_EXCEPT_WORD}} book and key).
-{{/IF_ALL_EXCEPT}}
+  Even if this game's dictionary doesn't have `{{ALL_EXCEPT_WORD}}`, do not split it into `take all`
+  plus `drop <object>` and do not give up on the exclusion — pass it literally as
+  `all {{ALL_EXCEPT_WORD}} <noun>` anyway (whether the parser rejects or ignores it is the game's own
+  behavior; passing it literally is the correct translation).
 - Common verbs: look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
 - **Separation / removal / detaching actions** (tear off, rip off, pull off, bite off, gnaw off, cut off, pull out) — when the input means "X off/out / tear/bite/rip something off", prefer a verb + particle (off/out) phrasal command, and pick the verb from the **dictionary** (e.g. if the dictionary has "gnaw", prefer it over the more common "bite"). Normal actions (look/take/open) are unaffected.

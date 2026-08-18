@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyTemplateBlock,
   EntryTranslator,
   filterUnintendedMetas,
   parseCandidates,
@@ -107,24 +106,6 @@ describe('filterUnintendedMetas (破壊的 meta ガード)', () => {
   });
 });
 
-describe('applyTemplateBlock', () => {
-  const tpl = 'A\n{{#TAG}}kept line\n{{/TAG}}B';
-
-  it('keep=true でマーカーを外して中身を残す', () => {
-    expect(applyTemplateBlock(tpl, 'TAG', true)).toBe('A\nkept line\nB');
-  });
-
-  it('keep=false でブロックごと除去する', () => {
-    expect(applyTemplateBlock(tpl, 'TAG', false)).toBe('A\nB');
-  });
-
-  it('マーカーが無いテンプレートには無害 (無変化)', () => {
-    const plain = 'no markers here';
-    expect(applyTemplateBlock(plain, 'TAG', true)).toBe(plain);
-    expect(applyTemplateBlock(plain, 'TAG', false)).toBe(plain);
-  });
-});
-
 describe('usefulObjectNames', () => {
   it('Inform 内部オブジェクトを除外する', () => {
     expect(usefulObjectNames(['Class', 'Object', 'Great Hall', 'lamp'])).toEqual([
@@ -176,19 +157,15 @@ const VOCAB = {
   objectNames: ['Class', 'lamp', 'Great Hall'],
 };
 
-describe('EntryTranslator: all-except/from の辞書依存ゲーティング', () => {
-  // "all but/except" はゲーム側パーサ実装依存 (darkzil の minilib は ALL の次の語を
-  // 一切見ない) なので、辞書に except/but/from が実在する時だけ該当ブロックを残す。
-  // 非対応時は代替コマンド列 (drop 等) へ組み替える指示を足さない (無理に通す実装は
-  // しない方針): ブロックが丸ごと消え、既存の一般則に委ねる。
-  const GATE_PROMPTS: PromptProvider = {
+describe('EntryTranslator: all except/but の語選択 (常に literal に教える)', () => {
+  // 「〜以外全部」は辞書に except/but が無いゲームでも常に教える (非対応ならゲーム側が
+  // 拒否/無視するだけであり、翻訳自体を諦めたり代替コマンド列に分解したりしない —
+  // ブロックごと消すと元の不具合 (除外を落として take all になる) を再現してしまう)。
+  // 変えるのは実際に使う語 (except/but のどちらか) だけ。
+  const WORD_PROMPTS: PromptProvider = {
     load: async (name) => {
       if (name === 'entry.system.md') {
-        return (
-          'SYSTEM {{DICT_WORDS}}\n' +
-          '{{#IF_ALL_EXCEPT}}HAS_EXCEPT_BLOCK word={{ALL_EXCEPT_WORD}}{{/IF_ALL_EXCEPT}}\n' +
-          '{{#IF_ALL_FROM}}HAS_FROM_BLOCK{{/IF_ALL_FROM}}'
-        );
+        return 'SYSTEM {{DICT_WORDS}}\nALL_EXCEPT word={{ALL_EXCEPT_WORD}}';
       }
       if (name === 'fewshot.entry.json') return '[]';
       throw new Error('not found');
@@ -205,29 +182,25 @@ describe('EntryTranslator: all-except/from の辞書依存ゲーティング', (
       get: async () => ({}),
     };
     const llm = new LLMClient(transport, { model: 'm', temperature: 0, maxTokens: 10, timeoutMs: 1000 });
-    const tr = new EntryTranslator(llm, GATE_PROMPTS, { contextTurns: 2 });
+    const tr = new EntryTranslator(llm, WORD_PROMPTS, { contextTurns: 2 });
     await tr.init({ dictWords, objectNames: [] });
     await tr.translate('見る', []);
     return (calls[0] as { content: string }[])[0]!.content;
   }
 
-  it('辞書に except/but/from が無ければ (darkpit 相当) 両ブロックとも消え、代替指示も足さない', async () => {
+  it('辞書に except/but が無くても (darkpit 相当) 指示自体は常に残り、既定語 except を使う', async () => {
     const prompt = await systemPromptFor(['take', 'all', 'look']);
-    expect(prompt).not.toContain('HAS_EXCEPT_BLOCK');
-    expect(prompt).not.toContain('HAS_FROM_BLOCK');
-    expect(prompt).not.toContain('drop');
+    expect(prompt).toContain('ALL_EXCEPT word=except');
   });
 
   it('辞書に except と but の両方があれば except を優先する', async () => {
     const prompt = await systemPromptFor(['take', 'all', 'except', 'but', 'from']);
-    expect(prompt).toContain('HAS_EXCEPT_BLOCK word=except');
-    expect(prompt).toContain('HAS_FROM_BLOCK');
+    expect(prompt).toContain('ALL_EXCEPT word=except');
   });
 
   it('辞書に but しか無ければ but を使う (except を誤って教えない)', async () => {
     const prompt = await systemPromptFor(['take', 'all', 'but']);
-    expect(prompt).toContain('HAS_EXCEPT_BLOCK word=but');
-    expect(prompt).not.toContain('word=except');
+    expect(prompt).toContain('ALL_EXCEPT word=but');
   });
 });
 
