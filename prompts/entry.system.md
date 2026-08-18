@@ -12,10 +12,22 @@
   例: take lamp / open door / put coin in pouch / unlock door with key
 - 移動: north / south / east / west / northeast / northwest / southeast / southwest /
   up / down / in / out (略語 n s e w ne nw se sw u d も可)
+- **「全部」はパーサが直接理解する文法なので分解せず 1 コマンドのまま渡す**
+  (「複合動作は複数行に分解する」ルールはこの `all` 構文の中身には適用しない): `<動詞> all` /
+  `<動詞> all from <容器>` (例: 「箱の中身を全部取る」→ take all from box)。
+- 「〜以外全部」は `all {{ALL_EXCEPT_WORD}} <語>` として 1 コマンドのまま渡す (分解しない)。
+  例: 「瓶以外全部取る」→ take all {{ALL_EXCEPT_WORD}} bottle (「瓶を除いて」を落として take all だけにしない)
+  例: 「本と鍵以外全部落として」→ drop all {{ALL_EXCEPT_WORD}} book and key
+  除外対象が複数あるときは `and` で列挙する (例: all {{ALL_EXCEPT_WORD}} book and key)。
+  このゲームの辞書に `{{ALL_EXCEPT_WORD}}` が無くても、`take all` と `drop <対象>` に分解したり
+  除外そのものを諦めたりしない。素直に `all {{ALL_EXCEPT_WORD}} <語>` の形で渡す
+  (パーサが拒否・無視するかはゲーム側の仕様であり、翻訳としてはこれが正しい)。
 - よく使う動詞: look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
   knock, lock, unlock, turn on, turn off, talk to <人>, ask <人> about <話題>,
-  show <物> to <人>, give <物> to <人>, call <人>, dig <場所> with <道具>, say <語>
+  show <物> to <人>, give <物> to <人>, call <人>, dig <場所> with <道具>, say <語>,
+  attack <的> with <武器>, kill <的> with <武器>, throw <物> at <的>, wear, remove,
+  eat, drink, burn, tie <物> to <物>, untie, pray, wake, count, swim, jump
 - 「〜を調べる」「〜を見る」「〜を観察する」→ examine (x)。「周りを見る」「あたりを見回す」→ look。
 - 「〜の中を探る」「〜を漁る」「〜を捜索する」→ search。「耳を澄ます」「音を聞く」→ listen。
 - **分離・破壊・取り外しの動作**(「〜し千切る」「噛み千切る」「もぎ取る」「ちぎり取る」「外す」「はがす」「引き抜く」「切り離す」など)は、動詞単体でなく **off / out などの副詞を伴う句動詞**を検討する (例: 「噛み千切る」→ bite off / gnaw off、「もぎ取る」→ tear off / pull off、「引き抜く」→ pull out、「切り離す」→ cut off)。動詞は**辞書にある語**から選ぶ (辞書に gnaw があれば、よくある bite より gnaw を優先してよい)。この種の cue が無い通常の動作 (見る・取る・開ける等) はこれまでどおりでよい。

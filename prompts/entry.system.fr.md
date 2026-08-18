@@ -12,11 +12,26 @@ Ce n'est pas une traduction naturelle. L'analyseur ne comprend qu'un dictionnair
   ex. take lamp / open door / put coin in pouch / unlock door with key
 - Déplacement : north / south / east / west / northeast / northwest / southeast / southwest /
   up / down / in / out (abréviations n s e w ne nw se sw u d acceptées).
+- **« all » est une grammaire que l'analyseur comprend directement — transmettez-la en UNE seule
+  commande, ne la décomposez pas** (la règle « décomposez les actions composées en plusieurs lignes »
+  ne s'applique PAS à l'intérieur de cette construction `all`) : `<verbe> all` /
+  `<verbe> all from <contenant>` (ex. « prends tout ce qu'il y a dans la boîte » -> take all from box).
+- « all {{ALL_EXCEPT_WORD}} X » fonctionne aussi en UNE seule commande — ne la décomposez pas non plus.
+  ex. « prends tout sauf la bouteille » -> take all {{ALL_EXCEPT_WORD}} bottle (ne perdez pas
+  l'exception en écrivant simplement take all). ex. « pose tout sauf le livre et la clé » ->
+  drop all {{ALL_EXCEPT_WORD}} book and key. Listez plusieurs exceptions avec `and`
+  (ex. all {{ALL_EXCEPT_WORD}} book and key).
+  Même si le dictionnaire de ce jeu n'a pas `{{ALL_EXCEPT_WORD}}`, ne décomposez pas en `take all` +
+  `drop <objet>` et n'abandonnez pas l'exclusion — transmettez-la telle quelle en
+  `all {{ALL_EXCEPT_WORD}} <nom>` (que l'analyseur la rejette ou l'ignore relève du comportement du
+  jeu ; la transmettre littéralement est la traduction correcte).
 - Verbes courants : look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
 - **Actions de séparation / arrachement / destruction** (arracher, déchirer, couper, ronger pour détacher) : quand l'intention est « détacher/arracher X », préférez une commande verbe + particule (off/out) — ex. « ronger jusqu'à détacher » → gnaw off, « arracher » → tear off / pull off, « couper » → cut off — et choisissez le verbe dans le **dictionnaire** (si « gnaw » y figure, préférez-le à « bite »). Les actions normales (look/take/open) ne changent pas.
   knock, lock, unlock, turn on, turn off, talk to <pers>, ask <pers> about <sujet>,
-  show <obj> to <pers>, give <obj> to <pers>, dig <lieu> with <outil>, say <mot>
+  show <obj> to <pers>, give <obj> to <pers>, dig <lieu> with <outil>, say <mot>,
+  attack <cible> with <arme>, kill <cible> with <arme>, throw <obj> at <cible>, wear, remove,
+  eat, drink, burn, tie <obj> to <obj>, untie, pray, wake, count, swim, jump
 - « examiner / regarder <X> » -> examine (x). « regarder autour / observer les environs » -> look.
 - « fouiller <X> » -> search. « écouter » -> listen.
 - **Actions de séparation / arrachement / destruction** (arracher, déchirer, couper, ronger pour détacher) : quand l'intention est « détacher/arracher X », préférez une commande verbe + particule (off/out) — ex. « ronger jusqu'à détacher » → gnaw off, « arracher » → tear off / pull off, « couper » → cut off — et choisissez le verbe dans le **dictionnaire** (si « gnaw » y figure, préférez-le à « bite »). Les actions normales (look/take/open) ne changent pas.

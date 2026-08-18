@@ -157,6 +157,62 @@ const VOCAB = {
   objectNames: ['Class', 'lamp', 'Great Hall'],
 };
 
+describe('EntryTranslator: all except/but の語選択 (常に literal に教える)', () => {
+  // 「〜以外全部」は辞書に except/but が無いゲームでも常に教える (非対応ならゲーム側が
+  // 拒否/無視するだけであり、翻訳自体を諦めたり代替コマンド列に分解したりしない —
+  // ブロックごと消すと元の不具合 (除外を落として take all になる) を再現してしまう)。
+  // 変えるのは実際に使う語 (except/but のどちらか) だけ。
+  const WORD_PROMPTS: PromptProvider = {
+    load: async (name) => {
+      if (name === 'entry.system.md') {
+        return 'SYSTEM {{DICT_WORDS}}\nALL_EXCEPT word={{ALL_EXCEPT_WORD}}';
+      }
+      if (name === 'fewshot.entry.json') {
+        return JSON.stringify([
+          { ja: '瓶以外全部取る', commands: ['take all {{ALL_EXCEPT_WORD}} bottle'] },
+        ]);
+      }
+      throw new Error('not found');
+    },
+  };
+
+  /** system + few-shot を含む全メッセージを連結して返す (両者の食い違いも検出する) */
+  async function messagesFor(dictWords: string[]): Promise<string> {
+    const calls: unknown[][] = [];
+    const transport: LLMTransport = {
+      post: async (_p, body) => {
+        calls.push((body as { messages: unknown[] }).messages);
+        return { choices: [{ message: { content: 'look' } }] };
+      },
+      get: async () => ({}),
+    };
+    const llm = new LLMClient(transport, { model: 'm', temperature: 0, maxTokens: 10, timeoutMs: 1000 });
+    const tr = new EntryTranslator(llm, WORD_PROMPTS, { contextTurns: 2 });
+    await tr.init({ dictWords, objectNames: [] });
+    await tr.translate('見る', []);
+    return (calls[0] as { content: string }[]).map((m) => m.content).join('\n');
+  }
+
+  it('辞書に except/but が無くても (darkpit 相当) 指示自体は常に残り、既定語 except を使う', async () => {
+    const msgs = await messagesFor(['take', 'all', 'look']);
+    expect(msgs).toContain('ALL_EXCEPT word=except');
+    expect(msgs).toContain('take all except bottle');
+  });
+
+  it('辞書に except と but の両方があれば except を優先する', async () => {
+    const msgs = await messagesFor(['take', 'all', 'except', 'but', 'from']);
+    expect(msgs).toContain('ALL_EXCEPT word=except');
+    expect(msgs).toContain('take all except bottle');
+  });
+
+  it('but しか無ければ system も few-shot も but で揃う (例だけ except に取り残されない)', async () => {
+    const msgs = await messagesFor(['take', 'all', 'but']);
+    expect(msgs).toContain('ALL_EXCEPT word=but');
+    expect(msgs).toContain('take all but bottle');
+    expect(msgs).not.toContain('except');
+  });
+});
+
 describe('EntryTranslator', () => {
   it('system プロンプトに辞書とオブジェクト名を埋め込み、few-shot を挟む', async () => {
     const { tr, calls } = makeTranslator(['take lamp']);

@@ -55,5 +55,19 @@
       "yes"
     ],
     "input": "oui"
+  },
+  {
+    "context": "You can see a bottle, a sandwich and a knife here.",
+    "commands": [
+      "take all"
+    ],
+    "input": "prends tout ce qu'il y a ici"
+  },
+  {
+    "context": "You can see a bottle, a sandwich and a knife here.",
+    "commands": [
+      "take all {{ALL_EXCEPT_WORD}} bottle"
+    ],
+    "input": "prends tout sauf la bouteille"
   }
 ]

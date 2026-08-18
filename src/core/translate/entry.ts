@@ -289,22 +289,38 @@ export class EntryTranslator {
     const template = await this.prompts.load(promptFileName('entry.system.md', lang));
     const objects = usefulObjectNames(vocab.objectNames);
     this.dictWordLen = Math.max(6, ...vocab.dictWords.map((w) => w.length));
+    this.dictSet = new Set(vocab.dictWords.map((w) => w.toLowerCase()));
+    // 「〜以外全部」は常に literal に `all <word> <語>` として渡す。辞書にその語が無い
+    // ゲームでは拒否・無視されるかもしれないが、それはゲーム側の仕様であり翻訳の忠実性を
+    // 優先する (代替コマンド列への分解や除外の断念はしない — 「無理に通す」実装は避けたい
+    // が、翻訳そのものを諦めるのは別問題)。ゲームの辞書に except/but のどちらかがあれば
+    // その語を使い、無ければ最も自然な英語である except を使う (辞書に無い語でも意図を
+    // 素直に書く、という既存の一般則と同じ扱い)。
+    const allExceptWord = this.dictSet.has(truncateForDict('except', this.dictWordLen))
+      ? 'except'
+      : this.dictSet.has(truncateForDict('but', this.dictWordLen))
+        ? 'but'
+        : 'except';
     this.systemPrompt = template
       .replace('{{DICT_WORDS}}', vocab.dictWords.join(' '))
       .replace('{{OBJECT_NAMES}}', objects.join(', '))
-      .replaceAll('{{DICT_WORD_LEN}}', String(this.dictWordLen));
-    this.dictSet = new Set(vocab.dictWords.map((w) => w.toLowerCase()));
+      .replaceAll('{{DICT_WORD_LEN}}', String(this.dictWordLen))
+      .replaceAll('{{ALL_EXCEPT_WORD}}', allExceptWord);
     // few-shot: ja は parse 失敗を空配列で握りつぶす (後方互換)。非 ja は
     // missing / JSON 不正も fail closed (起動エラーへ寄せる)。
+    // few-shot も system プロンプトと同じ語で展開する。両者がずれると
+    // 「system は but と言うのに例は except」という矛盾したメッセージ列になる。
     const fewshotName = promptFileName('fewshot.entry.json', lang);
+    const expandFewshot = (raw: string): FewShotExample[] =>
+      JSON.parse(raw.replaceAll('{{ALL_EXCEPT_WORD}}', allExceptWord)) as FewShotExample[];
     if (lang === DEFAULT_LANGUAGE) {
       try {
-        this.fewshot = JSON.parse(await this.prompts.load(fewshotName)) as FewShotExample[];
+        this.fewshot = expandFewshot(await this.prompts.load(fewshotName));
       } catch {
         this.fewshot = [];
       }
     } else {
-      this.fewshot = JSON.parse(await this.prompts.load(fewshotName)) as FewShotExample[];
+      this.fewshot = expandFewshot(await this.prompts.load(fewshotName));
     }
     // system プロンプト (辞書/オブジェクト埋め込み済み) + few-shot を版数ハッシュに。
     // 辞書・プロンプト・few-shot が変わればキャッシュを無効化する。

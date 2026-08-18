@@ -23,5 +23,19 @@
       "talk to old man"
     ],
     "input": "hablar con el anciano"
+  },
+  {
+    "context": "You can see a bottle, a sandwich and a knife here.",
+    "commands": [
+      "take all"
+    ],
+    "input": "coge todo lo que hay aquí"
+  },
+  {
+    "context": "You can see a bottle, a sandwich and a knife here.",
+    "commands": [
+      "take all {{ALL_EXCEPT_WORD}} bottle"
+    ],
+    "input": "coge todo excepto la botella"
   }
 ]
