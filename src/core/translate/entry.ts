@@ -308,15 +308,19 @@ export class EntryTranslator {
       .replaceAll('{{ALL_EXCEPT_WORD}}', allExceptWord);
     // few-shot: ja は parse 失敗を空配列で握りつぶす (後方互換)。非 ja は
     // missing / JSON 不正も fail closed (起動エラーへ寄せる)。
+    // few-shot も system プロンプトと同じ語で展開する。両者がずれると
+    // 「system は but と言うのに例は except」という矛盾したメッセージ列になる。
     const fewshotName = promptFileName('fewshot.entry.json', lang);
+    const expandFewshot = (raw: string): FewShotExample[] =>
+      JSON.parse(raw.replaceAll('{{ALL_EXCEPT_WORD}}', allExceptWord)) as FewShotExample[];
     if (lang === DEFAULT_LANGUAGE) {
       try {
-        this.fewshot = JSON.parse(await this.prompts.load(fewshotName)) as FewShotExample[];
+        this.fewshot = expandFewshot(await this.prompts.load(fewshotName));
       } catch {
         this.fewshot = [];
       }
     } else {
-      this.fewshot = JSON.parse(await this.prompts.load(fewshotName)) as FewShotExample[];
+      this.fewshot = expandFewshot(await this.prompts.load(fewshotName));
     }
     // system プロンプト (辞書/オブジェクト埋め込み済み) + few-shot を版数ハッシュに。
     // 辞書・プロンプト・few-shot が変わればキャッシュを無効化する。

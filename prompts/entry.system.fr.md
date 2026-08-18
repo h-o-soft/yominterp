@@ -18,7 +18,7 @@ Ce n'est pas une traduction naturelle. L'analyseur ne comprend qu'un dictionnair
   `<verbe> all from <contenant>` (ex. « prends tout ce qu'il y a dans la boîte » -> take all from box).
 - « all {{ALL_EXCEPT_WORD}} X » fonctionne aussi en UNE seule commande — ne la décomposez pas non plus.
   ex. « prends tout sauf la bouteille » -> take all {{ALL_EXCEPT_WORD}} bottle (ne perdez pas
-  l'exception en écrivant simplement take all). ex. « range tout sauf le livre et la clé » ->
+  l'exception en écrivant simplement take all). ex. « pose tout sauf le livre et la clé » ->
   drop all {{ALL_EXCEPT_WORD}} book and key. Listez plusieurs exceptions avec `and`
   (ex. all {{ALL_EXCEPT_WORD}} book and key).
   Même si le dictionnaire de ce jeu n'a pas `{{ALL_EXCEPT_WORD}}`, ne décomposez pas en `take all` +

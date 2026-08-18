@@ -17,7 +17,7 @@ understands a fixed dictionary and a limited grammar.
   `<verb> all` / `<verb> all from <container>` (e.g. "take everything out of the box" -> take all from box).
 - "all {{ALL_EXCEPT_WORD}} X" also works as ONE command — do not split it either.
   e.g. "take everything except the bottle" -> take all {{ALL_EXCEPT_WORD}} bottle (do not drop the
-  exception and just output take all). e.g. "put everything away except the book and the key" ->
+  exception and just output take all). e.g. "drop everything except the book and the key" ->
   drop all {{ALL_EXCEPT_WORD}} book and key. List multiple exceptions with `and`
   (e.g. all {{ALL_EXCEPT_WORD}} book and key).
   Even if this game's dictionary doesn't have `{{ALL_EXCEPT_WORD}}`, do not split it into `take all`

@@ -34,7 +34,7 @@
   {
     "context": "You can see a bottle, a sandwich and a knife here.",
     "commands": [
-      "take all except bottle"
+      "take all {{ALL_EXCEPT_WORD}} bottle"
     ],
     "input": "pegue tudo exceto a garrafa"
   }
