@@ -1,6 +1,6 @@
 {
   "name": "yominterp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Z-machine IF を LLM 翻訳層経由で日本語プレイ可能にする CLI 試作 (段階1)",
   "type": "module",
