@@ -12,11 +12,21 @@ understands a fixed dictionary and a limited grammar.
   e.g. take lamp / open door / put coin in pouch / unlock door with key
 - Movement: north / south / east / west / northeast / northwest / southeast / southwest /
   up / down / in / out (abbreviations n s e w ne nw se sw u d accepted).
+- **"all" / "all but X" / "all except X" is grammar the parser understands directly — pass it as ONE
+  command, do not split it** (the "split compound actions into multiple lines" rule does NOT apply
+  inside this `all` construct): `<verb> all` / `<verb> all but <noun>` / `<verb> all except <noun>` /
+  `<verb> all from <container>`.
+  e.g. "take everything except the bottle" -> take all except bottle (do not drop the exception and
+  just output take all). e.g. "put everything away except the book and the key" ->
+  put all except book and key in bag. e.g. "take everything out of the box" -> take all from box.
+  List multiple exceptions with `and` (e.g. all except book and key).
 - Common verbs: look (l), examine (x), take, drop, open, close, push, pull, move,
   read, search, inventory (i), wait (z), enter, climb, sit, stand, listen, smell,
 - **Separation / removal / detaching actions** (tear off, rip off, pull off, bite off, gnaw off, cut off, pull out) — when the input means "X off/out / tear/bite/rip something off", prefer a verb + particle (off/out) phrasal command, and pick the verb from the **dictionary** (e.g. if the dictionary has "gnaw", prefer it over the more common "bite"). Normal actions (look/take/open) are unaffected.
   knock, lock, unlock, turn on, turn off, talk to <person>, ask <person> about <topic>,
-  show <obj> to <person>, give <obj> to <person>, dig <place> with <tool>, say <word>
+  show <obj> to <person>, give <obj> to <person>, dig <place> with <tool>, say <word>,
+  attack <target> with <weapon>, kill <target> with <weapon>, throw <obj> at <target>, wear, remove,
+  eat, drink, burn, tie <obj> to <obj>, untie, pray, wake, count, swim, jump
 - "examine/look at <X>" -> examine (x). "look around" -> look. "search <X>" -> search. "listen" -> listen.
 - **Separation / removal / detaching actions** (tear off, rip off, pull off, bite off, gnaw off, cut off, pull out) — when the input means "X off/out / tear/bite/rip something off", prefer a verb + particle (off/out) phrasal command, and pick the verb from the **dictionary** (e.g. if the dictionary has "gnaw", prefer it over the more common "bite"). Normal actions (look/take/open) are unaffected.
 - yes/no question: the single word yes or no.

@@ -23,5 +23,12 @@
       "talk to old man"
     ],
     "input": "mit dem alten Mann sprechen"
+  },
+  {
+    "context": "You can see a bottle, a sandwich and a knife here.",
+    "commands": [
+      "take all except bottle"
+    ],
+    "input": "alles außer die Flasche nehmen"
   }
 ]
